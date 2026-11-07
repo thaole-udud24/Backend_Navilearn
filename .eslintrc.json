@@ -1,0 +1,21 @@
+{
+  "root": true,
+  "env": { "node": true, "es2022": true, "jest": true },
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "script" },
+  "extends": ["eslint:recommended", "prettier"],
+  "plugins": ["import"],
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_|^next$" }],
+    "no-console": ["warn", { "allow": ["error"] }],
+    "import/no-restricted-paths": [
+      "error",
+      {
+        "zones": [
+          { "target": "./src/utils", "from": "./src/modules" },
+          { "target": "./src/middlewares", "from": "./src/modules" },
+          { "target": "./src/config", "from": "./src/modules" }
+        ]
+      }
+    ]
+  }
+}
