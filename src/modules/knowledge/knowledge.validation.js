@@ -1,18 +1,19 @@
 const { z } = require('zod');
 
 const createSchema = z.object({
-  title: z.string().min(1).max(200),
-  content: z.string().min(1).max(2000),
+  name: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  order: z.number().int().optional(),
 });
 
 const updateStatusSchema = z.object({
-  status: z.enum(['open', 'in_progress', 'resolved']),
+  status: z.enum(['active', 'archived']),
 });
 
 const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
-  status: z.enum(['open', 'in_progress', 'resolved']).optional(),
+  status: z.enum(['active', 'archived']).optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });

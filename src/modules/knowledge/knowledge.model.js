@@ -2,19 +2,20 @@ const mongoose = require('mongoose');
 const softDeletePlugin = require('../../plugins/softDelete.plugin');
 const auditPlugin = require('../../plugins/audit.plugin');
 
-// Knowledge module (scaffolded from _template; business logic pending per BRD).
-const templateItemSchema = new mongoose.Schema(
+// Concept: smallest knowledge unit that question bank / mastery are tracked against.
+const conceptSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    title: { type: String, required: true, trim: true, maxlength: 200 },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
-    status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
+    name: { type: String, required: true, trim: true, maxlength: 200 },
+    description: { type: String, trim: true, maxlength: 2000, default: '' },
+    order: { type: Number, default: 0 },
+    status: { type: String, enum: ['active', 'archived'], default: 'active' },
   },
   { timestamps: true },
 );
 
-templateItemSchema.plugin(softDeletePlugin);
-templateItemSchema.plugin(auditPlugin);
-templateItemSchema.index({ owner: 1, createdAt: -1 });
+conceptSchema.plugin(softDeletePlugin);
+conceptSchema.plugin(auditPlugin);
+conceptSchema.index({ status: 1, order: 1 });
 
-module.exports = mongoose.model('KnowledgeItem', templateItemSchema);
+module.exports = mongoose.model('Concept', conceptSchema);
