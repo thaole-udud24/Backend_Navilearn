@@ -3,22 +3,16 @@ const authenticate = require('../../middlewares/authenticate');
 const authorize = require('../../middlewares/authorize');
 const validate = require('../../middlewares/validate');
 const { ROLES } = require('../../shared/roles');
-const { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema } = require('./assessment.validation');
+const { startSchema, submitSchema, listQuerySchema, idParamsSchema } = require('./assessment.validation');
 const ctrl = require('./assessment.controller');
 
 const router = express.Router();
 
-router.use(authenticate);
+// Personal learning data (BR-02/BR-35): student-only, no admin read.
+router.use(authenticate, authorize(ROLES.STUDENT));
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
-router.post('/', authorize(ROLES.STUDENT), validate(createSchema), ctrl.createCtrl);
+router.post('/', validate(startSchema), ctrl.startCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
-router.patch(
-  '/:id/status',
-  authorize(ROLES.ADMIN),
-  validate(idParamsSchema, 'params'),
-  validate(updateStatusSchema),
-  ctrl.updateStatusCtrl,
-);
-router.delete('/:id', validate(idParamsSchema, 'params'), ctrl.removeCtrl);
+router.patch('/:id/submit', validate(idParamsSchema, 'params'), validate(submitSchema), ctrl.submitCtrl);
 
 module.exports = router;
