@@ -1,15 +1,10 @@
-const { parsePagination } = require('../../utils/pagination');
+const { deriveLevel } = require('./mastery.service');
 
 describe('mastery module', () => {
-  it('parsePagination defaults page=1 limit=20', () => {
-    const { page, limit, skip } = parsePagination({});
-    expect(page).toBe(1);
-    expect(limit).toBe(20);
-    expect(skip).toBe(0);
-  });
-
-  it('parsePagination caps limit at 100', () => {
-    const { limit } = parsePagination({ limit: '500' });
-    expect(limit).toBe(100);
+  it('derives level thresholds correctly', () => {
+    expect(deriveLevel(10)).toBe('novice');
+    expect(deriveLevel(40)).toBe('developing');
+    expect(deriveLevel(70)).toBe('proficient');
+    expect(deriveLevel(95)).toBe('mastered');
   });
 });
