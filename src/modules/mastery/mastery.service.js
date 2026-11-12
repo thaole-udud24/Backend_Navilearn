@@ -5,11 +5,20 @@ const MasteryItem = require('./mastery.model');
 // EMA weighting: recent attempts move the score but one bad attempt can't erase a track record.
 const EMA_WEIGHT_NEW = 0.4;
 
+// BR-38: "không cập nhật [Mastery] từ một lần làm bài đơn lẻ" — the exact count is left to the
+// project team to decide (BRD §1.5), so score/attempts still accumulate from attempt 1, but the
+// derived level stays 'novice' (not yet a confident reading) until this many attempts exist.
+const MIN_ATTEMPTS_FOR_LEVEL = 3;
+
 function deriveLevel(score) {
   if (score >= 90) return 'mastered';
   if (score >= 70) return 'proficient';
   if (score >= 40) return 'developing';
   return 'novice';
+}
+
+function levelFor(score, attemptsCount) {
+  return attemptsCount < MIN_ATTEMPTS_FOR_LEVEL ? 'novice' : deriveLevel(score);
 }
 
 async function listForOwner(ownerId, query) {
@@ -39,7 +48,7 @@ async function upsertForAttempt(ownerId, conceptId, attemptScorePercent) {
       owner: ownerId,
       concept: conceptId,
       score: attemptScorePercent,
-      level: deriveLevel(attemptScorePercent),
+      level: levelFor(attemptScorePercent, 1),
       attemptsCount: 1,
       correctCount: isCorrectAttempt ? 1 : 0,
       lastAttemptAt: new Date(),
@@ -47,8 +56,8 @@ async function upsertForAttempt(ownerId, conceptId, attemptScorePercent) {
     });
   } else {
     item.score = Math.round(item.score * (1 - EMA_WEIGHT_NEW) + attemptScorePercent * EMA_WEIGHT_NEW);
-    item.level = deriveLevel(item.score);
     item.attemptsCount += 1;
+    item.level = levelFor(item.score, item.attemptsCount);
     item.correctCount += isCorrectAttempt ? 1 : 0;
     item.lastAttemptAt = new Date();
     item.updatedBy = ownerId;
