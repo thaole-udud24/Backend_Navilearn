@@ -1,22 +1,30 @@
 const ApiError = require('../../utils/ApiError');
 const { parsePagination, buildMeta } = require('../../utils/pagination');
 const AssessmentConfigItem = require('./assessment-config.model');
+const Rubric = require('./rubric.model');
 const Concept = require('../knowledge/knowledge.model');
 const QuestionItem = require('../question-bank/question-bank.model');
 const { ROLES } = require('../../shared/roles');
 
+const UPDATABLE_FIELDS = ['title', 'questions', 'passScore', 'timeLimitMinutes', 'kind'];
+
+async function assertQuestionsBelongToConcept(conceptId, questionIds) {
+  const questions = await QuestionItem.find({ _id: { $in: questionIds } });
+  if (questions.length !== questionIds.length) {
+    throw ApiError.badRequest('Some questions were not found', 'QUESTION_NOT_FOUND');
+  }
+  if (questions.some((q) => String(q.concept) !== String(conceptId))) {
+    throw ApiError.badRequest(
+      'All questions must belong to the selected concept',
+      'QUESTION_CONCEPT_MISMATCH',
+    );
+  }
+}
+
 async function create(ownerId, data) {
   const concept = await Concept.findById(data.concept);
   if (!concept) throw ApiError.badRequest('Concept not found', 'CONCEPT_NOT_FOUND');
-
-  const questions = await QuestionItem.find({ _id: { $in: data.questions } });
-  if (questions.length !== data.questions.length) {
-    throw ApiError.badRequest('Some questions were not found', 'QUESTION_NOT_FOUND');
-  }
-  if (questions.some((q) => String(q.concept) !== String(data.concept))) {
-    throw ApiError.badRequest('All questions must belong to the selected concept', 'QUESTION_CONCEPT_MISMATCH');
-  }
-
+  await assertQuestionsBelongToConcept(data.concept, data.questions);
   return AssessmentConfigItem.create({ owner: ownerId, createdBy: ownerId, ...data });
 }
 
@@ -24,6 +32,7 @@ async function list(query, requester) {
   const { page, limit, skip } = parsePagination(query);
   const filter = {
     ...(query.concept ? { concept: query.concept } : {}),
+    ...(query.kind ? { kind: query.kind } : {}),
     status: query.status ?? (requester.role === ROLES.ADMIN ? undefined : 'active'),
   };
   if (filter.status === undefined) delete filter.status;
@@ -40,6 +49,43 @@ async function getById(id) {
   return item;
 }
 
+async function update(id, requesterId, data) {
+  const item = await getById(id);
+  if (data.questions) {
+    await assertQuestionsBelongToConcept(item.concept, data.questions);
+  }
+  UPDATABLE_FIELDS.forEach((field) => {
+    if (data[field] !== undefined) item[field] = data[field];
+  });
+  item.updatedBy = requesterId;
+  await item.save();
+  return item;
+}
+
+async function updatePolicy(id, requesterId, { retryPolicy, showAnswersPolicy }) {
+  const item = await getById(id);
+  if (retryPolicy) item.retryPolicy = { ...item.retryPolicy.toObject(), ...retryPolicy };
+  if (showAnswersPolicy) item.showAnswersPolicy = showAnswersPolicy;
+  item.updatedBy = requesterId;
+  await item.save();
+  return item;
+}
+
+async function duplicate(id, ownerId) {
+  const source = await getById(id);
+  const plain = source.toObject();
+  delete plain._id;
+  delete plain.createdAt;
+  delete plain.updatedAt;
+  return AssessmentConfigItem.create({
+    ...plain,
+    owner: ownerId,
+    createdBy: ownerId,
+    updatedBy: null,
+    title: `${plain.title} (copy)`,
+  });
+}
+
 async function updateStatus(id, requesterId, status) {
   const item = await getById(id);
   item.status = status;
@@ -53,4 +99,68 @@ async function remove(id) {
   await item.softDelete();
 }
 
-module.exports = { create, list, getById, updateStatus, remove };
+// ---- Rubrics (UC-ACF-07..10) ----
+
+async function createRubric(ownerId, data) {
+  const concept = await Concept.findById(data.concept);
+  if (!concept) throw ApiError.badRequest('Concept not found', 'CONCEPT_NOT_FOUND');
+  return Rubric.create({ owner: ownerId, createdBy: ownerId, ...data });
+}
+
+async function listRubrics(query) {
+  const { page, limit, skip } = parsePagination(query);
+  const filter = {
+    ...(query.concept ? { concept: query.concept } : {}),
+    ...(query.status ? { status: query.status } : {}),
+  };
+  const [items, total] = await Promise.all([
+    Rubric.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Rubric.countDocuments(filter),
+  ]);
+  return { items, meta: buildMeta(page, limit, total) };
+}
+
+async function getRubric(id) {
+  const item = await Rubric.findById(id);
+  if (!item) throw ApiError.notFound('Rubric not found');
+  return item;
+}
+
+async function updateRubric(id, requesterId, data) {
+  const item = await getRubric(id);
+  if (data.title !== undefined) item.title = data.title;
+  if (data.criteria !== undefined) item.criteria = data.criteria;
+  item.updatedBy = requesterId;
+  await item.save();
+  return item;
+}
+
+async function updateRubricStatus(id, requesterId, status) {
+  const item = await getRubric(id);
+  item.status = status;
+  item.updatedBy = requesterId;
+  await item.save();
+  return item;
+}
+
+// Used by ai-assist.service when grading an essay for a concept that has an active rubric.
+async function findActiveRubricForConcept(conceptId) {
+  return Rubric.findOne({ concept: conceptId, status: 'active' }).sort({ createdAt: -1 });
+}
+
+module.exports = {
+  create,
+  list,
+  getById,
+  update,
+  updatePolicy,
+  duplicate,
+  updateStatus,
+  remove,
+  createRubric,
+  listRubrics,
+  getRubric,
+  updateRubric,
+  updateRubricStatus,
+  findActiveRubricForConcept,
+};

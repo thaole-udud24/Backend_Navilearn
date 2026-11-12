@@ -17,4 +17,17 @@ const listQuerySchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
-module.exports = { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema };
+const thresholdKeyParamsSchema = z.object({
+  key: z.enum(['mastery.developing', 'mastery.proficient', 'mastery.mastered']),
+});
+
+const upsertThresholdSchema = z.object({ value: z.number().min(0).max(100) });
+
+module.exports = {
+  createSchema,
+  updateStatusSchema,
+  listQuerySchema,
+  idParamsSchema,
+  thresholdKeyParamsSchema,
+  upsertThresholdSchema,
+};
