@@ -9,8 +9,9 @@ async function create(ownerId, data) {
   const concept = await Concept.findById(data.concept);
   if (!concept) throw ApiError.badRequest('Concept not found', 'CONCEPT_NOT_FOUND');
 
-  const questions = await QuestionItem.find({ _id: { $in: data.questions } });
-  if (questions.length !== data.questions.length) {
+  const uniqueQuestionIds = [...new Set(data.questions)];
+  const questions = await QuestionItem.find({ _id: { $in: uniqueQuestionIds } });
+  if (questions.length !== uniqueQuestionIds.length) {
     throw ApiError.badRequest('Some questions were not found', 'QUESTION_NOT_FOUND');
   }
   if (questions.some((q) => String(q.concept) !== String(data.concept))) {
@@ -24,7 +25,9 @@ async function list(query, requester) {
   const { page, limit, skip } = parsePagination(query);
   const filter = {
     ...(query.concept ? { concept: query.concept } : {}),
-    status: query.status ?? (requester.role === ROLES.ADMIN ? undefined : 'active'),
+    // Non-admins are always forced to 'active', ignoring any status they ask for — only admins
+    // may pass their own status filter (or none, to see every status).
+    status: requester.role === ROLES.ADMIN ? query.status : 'active',
   };
   if (filter.status === undefined) delete filter.status;
   const [items, total] = await Promise.all([

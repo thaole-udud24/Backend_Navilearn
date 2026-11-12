@@ -41,35 +41,40 @@ async function submit(id, requesterId, answers) {
   if (attempt.status !== 'in_progress') throw ApiError.conflict('Assessment already submitted');
 
   const config = await AssessmentConfigItem.findById(attempt.assessmentConfig);
+  if (!config) throw ApiError.notFound('Assessment config not found');
+
   const questions = await QuestionItem.find({ _id: { $in: config.questions } });
   const questionById = new Map(questions.map((q) => [String(q._id), q]));
 
-  let totalPoints = 0;
-  let earnedTotal = 0;
-  const gradedAnswers = [];
+  // De-dupe by question id (last one wins) so a repeated id in the submitted answers — double
+  // click, crafted request — can't double-count toward totalPoints/earnedTotal.
+  const uniqueAnswers = [...new Map(answers.map((a) => [a.question, a])).values()];
+  const matched = uniqueAnswers
+    .map((answer) => ({ answer, question: questionById.get(answer.question) }))
+    .filter((m) => m.question);
+  const totalPoints = matched.reduce((sum, m) => sum + m.question.points, 0);
 
-  for (const answer of answers) {
-    const question = questionById.get(answer.question);
-    if (!question) continue;
-    totalPoints += question.points;
+  // Essay grading calls the AI service, which itself calls out to Gemini — run those concurrently
+  // instead of serializing one AI round-trip per essay question.
+  const gradedAnswers = await Promise.all(
+    matched.map(async ({ answer, question }) => {
+      if (question.type === 'mcq') {
+        const selected = question.options[answer.selectedOptionIndex];
+        const isCorrect = Boolean(selected?.isCorrect);
+        const earnedPoints = isCorrect ? question.points : 0;
+        return { ...answer, isCorrect, earnedPoints, feedback: '' };
+      }
 
-    if (question.type === 'mcq') {
-      const selected = question.options[answer.selectedOptionIndex];
-      const isCorrect = Boolean(selected?.isCorrect);
-      const earnedPoints = isCorrect ? question.points : 0;
-      earnedTotal += earnedPoints;
-      gradedAnswers.push({ ...answer, isCorrect, earnedPoints, feedback: '' });
-    } else {
       const { scorePercent, feedback } = await aiAssistService.gradeEssay(requesterId, {
         conceptId: attempt.concept,
         referenceAnswer: question.referenceAnswer,
         studentText: answer.essayText,
       });
       const earnedPoints = Math.round((question.points * scorePercent) / 100);
-      earnedTotal += earnedPoints;
-      gradedAnswers.push({ ...answer, isCorrect: scorePercent >= 50, earnedPoints, feedback });
-    }
-  }
+      return { ...answer, isCorrect: scorePercent >= 50, earnedPoints, feedback };
+    }),
+  );
+  const earnedTotal = gradedAnswers.reduce((sum, a) => sum + a.earnedPoints, 0);
 
   attempt.answers = gradedAnswers;
   attempt.score = totalPoints === 0 ? 0 : Math.round((earnedTotal / totalPoints) * 100);

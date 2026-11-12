@@ -27,7 +27,9 @@ async function list(query, requester) {
     ...(query.concept ? { concept: query.concept } : {}),
     ...(query.type ? { type: query.type } : {}),
     ...(query.difficulty ? { difficulty: query.difficulty } : {}),
-    status: query.status ?? (requester.role === ROLES.ADMIN ? undefined : 'active'),
+    // Non-admins are always forced to 'active', ignoring any status they ask for — only admins
+    // may pass their own status filter (or none, to see every status).
+    status: requester.role === ROLES.ADMIN ? query.status : 'active',
   };
   if (filter.status === undefined) delete filter.status;
   const [items, total] = await Promise.all([
