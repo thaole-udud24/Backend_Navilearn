@@ -1,0 +1,41 @@
+# Chạy cả backend + frontend + MongoDB local. Yêu cầu: frontend_navilearn phải được
+# clone làm thư mục anh em cạnh backend_navilearn (cùng thư mục cha), ví dụ:
+#   some-folder/
+#   ├── backend_navilearn/   (repo này)
+#   └── frontend_navilearn/
+# Chạy: trong thư mục backend_navilearn -> `docker compose up --build`
+services:
+  mongo:
+    image: mongo:7
+    container_name: navilearn-mongo
+    ports:
+      - "27019:27017"
+    volumes:
+      - navilearn-mongo-data:/data/db
+
+  backend:
+    build: .
+    container_name: navilearn-backend
+    # optional: thiếu .env (gitignored, không có trong repo) thì compose không chết ngay —
+    # app tự báo rõ thiếu biến env nào.
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/navilearn
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongo
+
+  frontend:
+    build: ../frontend_navilearn
+    container_name: navilearn-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  navilearn-mongo-data:

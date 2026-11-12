@@ -1,0 +1,41 @@
+{
+  "name": "backend_navilearn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build": "node -e \"console.log('backend: no bundling step, build = lint + test')\" && npm run lint && npm test",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write \"src/**/*.js\"",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "bcryptjs": "2.4.3",
+    "cors": "2.8.5",
+    "dotenv": "16.4.5",
+    "express": "4.19.2",
+    "express-rate-limit": "7.4.0",
+    "helmet": "7.1.0",
+    "jsonwebtoken": "9.0.2",
+    "mongoose": "8.5.3",
+    "morgan": "1.10.0",
+    "multer": "1.4.5-lts.1",
+    "pino": "9.3.2",
+    "pino-http": "10.2.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "eslint": "8.57.0",
+    "eslint-config-prettier": "9.1.0",
+    "eslint-plugin-import": "2.29.1",
+    "jest": "29.7.0",
+    "nodemon": "3.1.4",
+    "prettier": "3.3.3",
+    "supertest": "7.0.0"
+  }
+}
