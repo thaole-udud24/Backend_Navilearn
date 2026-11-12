@@ -1,6 +1,9 @@
 const { gradeEssay } = require('./ai-assist.service');
 
 jest.mock('./ai-assist.model', () => ({ create: jest.fn().mockResolvedValue({}) }));
+// gradeEssay's scorePercent is a local keyword-overlap heuristic (see ai-assist.service.js); only
+// the unused feedback text comes from the real AI call, so stub it instead of hitting the network.
+jest.mock('../../integrations/ai', () => ({ ask: jest.fn().mockResolvedValue({ answer: 'stub feedback' }) }));
 
 describe('ai-assist module', () => {
   it('scores an essay higher when it shares more words with the reference answer', async () => {
