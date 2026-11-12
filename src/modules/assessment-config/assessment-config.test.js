@@ -1,15 +1,13 @@
-const { parsePagination } = require('../../utils/pagination');
+const { createSchema } = require('./assessment-config.validation');
 
 describe('assessment-config module', () => {
-  it('parsePagination defaults page=1 limit=20', () => {
-    const { page, limit, skip } = parsePagination({});
-    expect(page).toBe(1);
-    expect(limit).toBe(20);
-    expect(skip).toBe(0);
+  it('rejects a config with no questions', () => {
+    const result = createSchema.safeParse({ title: 'Quiz 1', concept: 'c1', questions: [] });
+    expect(result.success).toBe(false);
   });
 
-  it('parsePagination caps limit at 100', () => {
-    const { limit } = parsePagination({ limit: '500' });
-    expect(limit).toBe(100);
+  it('accepts a config with at least 1 question', () => {
+    const result = createSchema.safeParse({ title: 'Quiz 1', concept: 'c1', questions: ['q1'] });
+    expect(result.success).toBe(true);
   });
 });

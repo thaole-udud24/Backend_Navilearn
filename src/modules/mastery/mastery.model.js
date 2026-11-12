@@ -2,19 +2,22 @@ const mongoose = require('mongoose');
 const softDeletePlugin = require('../../plugins/softDelete.plugin');
 const auditPlugin = require('../../plugins/audit.plugin');
 
-// Mastery module (scaffolded from _template; business logic pending per BRD).
-const templateItemSchema = new mongoose.Schema(
+// Mastery is derived data: written only by assessment.service after grading, never by a direct API call.
+const masterySchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    title: { type: String, required: true, trim: true, maxlength: 200 },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
-    status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
+    concept: { type: mongoose.Schema.Types.ObjectId, ref: 'Concept', required: true },
+    score: { type: Number, default: 0, min: 0, max: 100 },
+    level: { type: String, enum: ['novice', 'developing', 'proficient', 'mastered'], default: 'novice' },
+    attemptsCount: { type: Number, default: 0 },
+    correctCount: { type: Number, default: 0 },
+    lastAttemptAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-templateItemSchema.plugin(softDeletePlugin);
-templateItemSchema.plugin(auditPlugin);
-templateItemSchema.index({ owner: 1, createdAt: -1 });
+masterySchema.plugin(softDeletePlugin);
+masterySchema.plugin(auditPlugin);
+masterySchema.index({ owner: 1, concept: 1 }, { unique: true });
 
-module.exports = mongoose.model('MasteryItem', templateItemSchema);
+module.exports = mongoose.model('MasteryItem', masterySchema);

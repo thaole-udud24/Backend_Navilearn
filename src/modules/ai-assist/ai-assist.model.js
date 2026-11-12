@@ -1,20 +1,19 @@
 const mongoose = require('mongoose');
-const softDeletePlugin = require('../../plugins/softDelete.plugin');
 const auditPlugin = require('../../plugins/audit.plugin');
 
-// AiAssist module (scaffolded from _template; business logic pending per BRD).
-const templateItemSchema = new mongoose.Schema(
+// Audit log of every AI-assisted action (question generation, essay grading) for traceability.
+const aiAssistLogSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    title: { type: String, required: true, trim: true, maxlength: 200 },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
-    status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
+    concept: { type: mongoose.Schema.Types.ObjectId, ref: 'Concept', default: null },
+    kind: { type: String, enum: ['generate_question', 'grade_essay'], required: true },
+    prompt: { type: String, required: true, maxlength: 4000 },
+    response: { type: String, required: true, maxlength: 4000 },
   },
   { timestamps: true },
 );
 
-templateItemSchema.plugin(softDeletePlugin);
-templateItemSchema.plugin(auditPlugin);
-templateItemSchema.index({ owner: 1, createdAt: -1 });
+aiAssistLogSchema.plugin(auditPlugin);
+aiAssistLogSchema.index({ owner: 1, createdAt: -1 });
 
-module.exports = mongoose.model('AiAssistItem', templateItemSchema);
+module.exports = mongoose.model('AiAssistItem', aiAssistLogSchema);

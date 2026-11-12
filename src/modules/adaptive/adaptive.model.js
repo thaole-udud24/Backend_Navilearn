@@ -2,19 +2,18 @@ const mongoose = require('mongoose');
 const softDeletePlugin = require('../../plugins/softDelete.plugin');
 const auditPlugin = require('../../plugins/audit.plugin');
 
-// Adaptive module (scaffolded from _template; business logic pending per BRD).
-const templateItemSchema = new mongoose.Schema(
+// UC-ADP-02: a learning activity the student started from the Next Best Action recommendation.
+const activitySchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    title: { type: String, required: true, trim: true, maxlength: 200 },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
-    status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
+    concept: { type: mongoose.Schema.Types.ObjectId, ref: 'Concept', required: true },
+    priority: { type: Number, required: true },
+    reason: { type: String, required: true },
   },
   { timestamps: true },
 );
 
-templateItemSchema.plugin(softDeletePlugin);
-templateItemSchema.plugin(auditPlugin);
-templateItemSchema.index({ owner: 1, createdAt: -1 });
-
-module.exports = mongoose.model('AdaptiveItem', templateItemSchema);
+activitySchema.plugin(softDeletePlugin);
+activitySchema.plugin(auditPlugin);
+activitySchema.index({ owner: 1, createdAt: -1 });
+module.exports = mongoose.model('AdaptiveActivity', activitySchema);

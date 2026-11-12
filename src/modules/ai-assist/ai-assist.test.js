@@ -1,15 +1,19 @@
-const { parsePagination } = require('../../utils/pagination');
+const { gradeEssay } = require('./ai-assist.service');
+
+jest.mock('./ai-assist.model', () => ({ create: jest.fn().mockResolvedValue({}) }));
 
 describe('ai-assist module', () => {
-  it('parsePagination defaults page=1 limit=20', () => {
-    const { page, limit, skip } = parsePagination({});
-    expect(page).toBe(1);
-    expect(limit).toBe(20);
-    expect(skip).toBe(0);
-  });
-
-  it('parsePagination caps limit at 100', () => {
-    const { limit } = parsePagination({ limit: '500' });
-    expect(limit).toBe(100);
+  it('scores an essay higher when it shares more words with the reference answer', async () => {
+    const low = await gradeEssay('owner1', {
+      conceptId: 'c1',
+      referenceAnswer: 'định lý Pytago tổng bình phương hai cạnh góc vuông bằng bình phương cạnh huyền',
+      studentText: 'tôi không biết',
+    });
+    const high = await gradeEssay('owner1', {
+      conceptId: 'c1',
+      referenceAnswer: 'định lý Pytago tổng bình phương hai cạnh góc vuông bằng bình phương cạnh huyền',
+      studentText: 'định lý Pytago nói tổng bình phương hai cạnh góc vuông bằng bình phương cạnh huyền',
+    });
+    expect(high.scorePercent).toBeGreaterThan(low.scorePercent);
   });
 });

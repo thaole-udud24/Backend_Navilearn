@@ -2,19 +2,22 @@ const mongoose = require('mongoose');
 const softDeletePlugin = require('../../plugins/softDelete.plugin');
 const auditPlugin = require('../../plugins/audit.plugin');
 
-// AssessmentConfig module (scaffolded from _template; business logic pending per BRD).
-const templateItemSchema = new mongoose.Schema(
+// An assessment config is a quiz/exercise definition: a set of questions for one concept.
+const assessmentConfigSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true, maxlength: 200 },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
-    status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
+    concept: { type: mongoose.Schema.Types.ObjectId, ref: 'Concept', required: true },
+    questions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'QuestionItem', required: true }],
+    passScore: { type: Number, default: 50, min: 0, max: 100 },
+    timeLimitMinutes: { type: Number, default: 0, min: 0 },
+    status: { type: String, enum: ['active', 'archived'], default: 'active' },
   },
   { timestamps: true },
 );
 
-templateItemSchema.plugin(softDeletePlugin);
-templateItemSchema.plugin(auditPlugin);
-templateItemSchema.index({ owner: 1, createdAt: -1 });
+assessmentConfigSchema.plugin(softDeletePlugin);
+assessmentConfigSchema.plugin(auditPlugin);
+assessmentConfigSchema.index({ concept: 1, status: 1 });
 
-module.exports = mongoose.model('AssessmentConfigItem', templateItemSchema);
+module.exports = mongoose.model('AssessmentConfigItem', assessmentConfigSchema);

@@ -1,20 +1,27 @@
 const { z } = require('zod');
 
-const createSchema = z.object({
-  title: z.string().min(1).max(200),
-  content: z.string().min(1).max(2000),
+const startSchema = z.object({
+  assessmentConfig: z.string().min(1),
 });
 
-const updateStatusSchema = z.object({
-  status: z.enum(['open', 'in_progress', 'resolved']),
+const submitSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        selectedOptionIndex: z.number().int().min(0).optional(),
+        essayText: z.string().max(4000).optional(),
+      }),
+    )
+    .min(1),
 });
 
 const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
-  status: z.enum(['open', 'in_progress', 'resolved']).optional(),
+  status: z.enum(['in_progress', 'submitted']).optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
-module.exports = { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema };
+module.exports = { startSchema, submitSchema, listQuerySchema, idParamsSchema };

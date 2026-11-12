@@ -1,15 +1,11 @@
-const { parsePagination } = require('../../utils/pagination');
+const { submitSchema } = require('./assessment.validation');
 
 describe('assessment module', () => {
-  it('parsePagination defaults page=1 limit=20', () => {
-    const { page, limit, skip } = parsePagination({});
-    expect(page).toBe(1);
-    expect(limit).toBe(20);
-    expect(skip).toBe(0);
+  it('rejects a submission with no answers', () => {
+    expect(submitSchema.safeParse({ answers: [] }).success).toBe(false);
   });
 
-  it('parsePagination caps limit at 100', () => {
-    const { limit } = parsePagination({ limit: '500' });
-    expect(limit).toBe(100);
+  it('accepts a submission with at least 1 answer', () => {
+    expect(submitSchema.safeParse({ answers: [{ question: 'q1', selectedOptionIndex: 1 }] }).success).toBe(true);
   });
 });

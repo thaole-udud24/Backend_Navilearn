@@ -10,6 +10,26 @@ npm install
 npm run dev             # http://localhost:5000, health: GET /api/v1/health
 ```
 
+### Docker (chạy cả backend + frontend + MongoDB local)
+
+Cần clone `frontend_navilearn` làm thư mục **anh em** cạnh `backend_navilearn` (cùng 1 thư mục cha):
+
+```text
+some-folder/
+├── backend_navilearn/   (repo này, chứa docker-compose.yml)
+└── frontend_navilearn/
+```
+
+```bash
+cd backend_navilearn
+cp .env.example .env    # điền MONGODB_URI, JWT secrets, ... của riêng bạn
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000, Backend: http://localhost:5000, Mongo (container local): `localhost:27019`.
+- Thiếu `.env` → container backend vẫn chạy nhưng crash với lỗi `Invalid environment variables: ...` — quay lại bước `cp .env.example .env`.
+- Lệnh có thể là `docker-compose` (bản cũ, gạch ngang) hoặc `docker compose` (bản mới trong Docker Desktop) tuỳ máy.
+
 ## Script
 
 | Script | Việc |

@@ -1,53 +1,39 @@
 const ApiError = require('../../utils/ApiError');
 const { parsePagination, buildMeta } = require('../../utils/pagination');
-const KnowledgeItem = require('./knowledge.model');
-const { ROLES } = require('../../shared/roles');
+const Concept = require('./knowledge.model');
 
 async function create(ownerId, data) {
-  return KnowledgeItem.create({ owner: ownerId, createdBy: ownerId, ...data });
+  return Concept.create({ owner: ownerId, createdBy: ownerId, ...data });
 }
 
-async function listForOwner(ownerId, query) {
+// Concepts are shared content: every authenticated user sees the same list (students default to active only).
+async function list(query, requester) {
   const { page, limit, skip } = parsePagination(query);
-  const filter = { owner: ownerId, ...(query.status ? { status: query.status } : {}) };
+  const filter = query.status ? { status: query.status } : requester.role === 'admin' ? {} : { status: 'active' };
   const [items, total] = await Promise.all([
-    KnowledgeItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-    KnowledgeItem.countDocuments(filter),
+    Concept.find(filter).sort({ order: 1, createdAt: -1 }).skip(skip).limit(limit),
+    Concept.countDocuments(filter),
   ]);
   return { items, meta: buildMeta(page, limit, total) };
 }
 
-async function listAll(query) {
-  const { page, limit, skip } = parsePagination(query);
-  const filter = query.status ? { status: query.status } : {};
-  const [items, total] = await Promise.all([
-    KnowledgeItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-    KnowledgeItem.countDocuments(filter),
-  ]);
-  return { items, meta: buildMeta(page, limit, total) };
-}
-
-async function getOwned(id, requester) {
-  const item = await KnowledgeItem.findById(id);
-  if (!item) throw ApiError.notFound('Item not found');
-  if (requester.role !== ROLES.ADMIN && String(item.owner) !== String(requester.id)) {
-    throw ApiError.forbidden('Not the owner of this item');
-  }
+async function getById(id) {
+  const item = await Concept.findById(id);
+  if (!item) throw ApiError.notFound('Concept not found');
   return item;
 }
 
 async function updateStatus(id, requesterId, status) {
-  const item = await KnowledgeItem.findById(id);
-  if (!item) throw ApiError.notFound('Item not found');
+  const item = await getById(id);
   item.status = status;
   item.updatedBy = requesterId;
   await item.save();
   return item;
 }
 
-async function remove(id, requester) {
-  const item = await getOwned(id, requester);
+async function remove(id) {
+  const item = await getById(id);
   await item.softDelete();
 }
 
-module.exports = { create, listForOwner, listAll, getOwned, updateStatus, remove };
+module.exports = { create, list, getById, updateStatus, remove };
