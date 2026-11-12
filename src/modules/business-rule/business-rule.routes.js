@@ -3,12 +3,30 @@ const authenticate = require('../../middlewares/authenticate');
 const authorize = require('../../middlewares/authorize');
 const validate = require('../../middlewares/validate');
 const { ROLES } = require('../../shared/roles');
-const { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema } = require('./business-rule.validation');
+const {
+  createSchema,
+  updateStatusSchema,
+  listQuerySchema,
+  idParamsSchema,
+  thresholdKeyParamsSchema,
+  upsertThresholdSchema,
+} = require('./business-rule.validation');
 const ctrl = require('./business-rule.controller');
 
 const router = express.Router();
 
 router.use(authenticate);
+
+// UC-BRL-10 thresholds — literal path, must come before '/:id'.
+router.get('/thresholds', ctrl.listThresholdsCtrl);
+router.put(
+  '/thresholds/:key',
+  authorize(ROLES.ADMIN),
+  validate(thresholdKeyParamsSchema, 'params'),
+  validate(upsertThresholdSchema),
+  ctrl.upsertThresholdCtrl,
+);
+
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', authorize(ROLES.STUDENT), validate(createSchema), ctrl.createCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);

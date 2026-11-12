@@ -10,7 +10,9 @@ const createCtrl = asyncHandler(async (req, res) => {
 
 const listCtrl = asyncHandler(async (req, res) => {
   const { items, meta } =
-    req.user.role === ROLES.ADMIN ? await service.listAll(req.query) : await service.listForOwner(req.user.id, req.query);
+    req.user.role === ROLES.ADMIN
+      ? await service.listAll(req.query)
+      : await service.listForOwner(req.user.id, req.query);
   return ok(res, items, 'OK', meta);
 });
 
@@ -29,4 +31,22 @@ const removeCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
-module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl };
+const listThresholdsCtrl = asyncHandler(async (req, res) => {
+  const thresholds = await service.getThresholds();
+  return ok(res, thresholds);
+});
+
+const upsertThresholdCtrl = asyncHandler(async (req, res) => {
+  const item = await service.upsertThreshold(req.params.key, req.body.value, req.user.id);
+  return ok(res, item, 'Threshold updated');
+});
+
+module.exports = {
+  createCtrl,
+  listCtrl,
+  getCtrl,
+  updateStatusCtrl,
+  removeCtrl,
+  listThresholdsCtrl,
+  upsertThresholdCtrl,
+};

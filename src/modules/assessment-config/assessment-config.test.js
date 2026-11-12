@@ -1,4 +1,4 @@
-const { createSchema } = require('./assessment-config.validation');
+const { createSchema, updateSchema, createRubricSchema } = require('./assessment-config.validation');
 
 describe('assessment-config module', () => {
   it('rejects a config with no questions', () => {
@@ -10,9 +10,49 @@ describe('assessment-config module', () => {
     const result = createSchema.safeParse({ title: 'Quiz 1', concept: 'c1', questions: ['q1'] });
     expect(result.success).toBe(true);
   });
+
+  it('rejects an unknown kind (UC-ASM-08..11)', () => {
+    const result = createSchema.safeParse({
+      title: 'Quiz 1',
+      concept: 'c1',
+      questions: ['q1'],
+      kind: 'homework',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a recognized kind', () => {
+    const result = createSchema.safeParse({
+      title: 'Quiz 1',
+      concept: 'c1',
+      questions: ['q1'],
+      kind: 'mock_exam',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an update with no fields (UC-ACF-04)', () => {
+    expect(updateSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects a rubric with no criteria (UC-ACF-08)', () => {
+    expect(createRubricSchema.safeParse({ title: 'Essay rubric', concept: 'c1', criteria: [] }).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts a rubric with at least 1 criterion', () => {
+    const result = createRubricSchema.safeParse({
+      title: 'Essay rubric',
+      concept: 'c1',
+      criteria: [{ name: 'Clarity', maxPoints: 10 }],
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 jest.mock('./assessment-config.model', () => ({ find: jest.fn(), countDocuments: jest.fn(), create: jest.fn() }));
+jest.mock('./rubric.model', () => ({ find: jest.fn(), countDocuments: jest.fn() }));
 jest.mock('../knowledge/knowledge.model', () => ({ findById: jest.fn() }));
 jest.mock('../question-bank/question-bank.model', () => ({ find: jest.fn() }));
 
@@ -33,6 +73,26 @@ describe('assessment-config list() status filter (security)', () => {
   it('lets an admin request a specific status', async () => {
     await list({ status: 'archived' }, { role: 'admin' });
     expect(AssessmentConfigItem.find).toHaveBeenCalledWith(expect.objectContaining({ status: 'archived' }));
+  });
+});
+
+describe('assessment-config listRubrics() status filter (security)', () => {
+  const Rubric = require('./rubric.model');
+  const { listRubrics } = require('./assessment-config.service');
+
+  beforeEach(() => {
+    Rubric.find.mockReturnValue({ sort: () => ({ skip: () => ({ limit: () => [] }) }) });
+    Rubric.countDocuments.mockResolvedValue(0);
+  });
+
+  it('forces status=active for a student even if they ask for a different status', async () => {
+    await listRubrics({ status: 'draft' }, { role: 'student' });
+    expect(Rubric.find).toHaveBeenCalledWith(expect.objectContaining({ status: 'active' }));
+  });
+
+  it('lets an admin request a specific status', async () => {
+    await listRubrics({ status: 'draft' }, { role: 'admin' });
+    expect(Rubric.find).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
   });
 });
 
