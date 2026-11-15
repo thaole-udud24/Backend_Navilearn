@@ -4,39 +4,57 @@ const authorize = require('../../middlewares/authorize');
 const validate = require('../../middlewares/validate');
 const { ROLES } = require('../../shared/roles');
 const {
-  createSchema,
-  updateStatusSchema,
+  createRuleSchema,
+  updateRuleSchema,
+  resetRuleSchema,
   listQuerySchema,
   idParamsSchema,
-  thresholdKeyParamsSchema,
-  upsertThresholdSchema,
+  simulateRuleSchema,
 } = require('./business-rule.validation');
+
 const ctrl = require('./business-rule.controller');
 
 const router = express.Router();
 
 router.use(authenticate);
 
-// UC-BRL-10 thresholds — literal path, must come before '/:id'.
-router.get('/thresholds', ctrl.listThresholdsCtrl);
-router.put(
-  '/thresholds/:key',
-  authorize(ROLES.ADMIN),
-  validate(thresholdKeyParamsSchema, 'params'),
-  validate(upsertThresholdSchema),
-  ctrl.upsertThresholdCtrl,
-);
+router.get('/export', authorize(ROLES.ADMIN), ctrl.exportCtrl);
+router.post('/simulate', authorize(ROLES.ADMIN), validate(simulateRuleSchema), ctrl.simulateCtrl);
 
+// Xem danh sách quy tắc nghiệp vụ
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
-router.post('/', authorize(ROLES.STUDENT), validate(createSchema), ctrl.createCtrl);
+
+// Lấy quy tắc theo mã
+router.get('/code/:code', ctrl.getByCodeCtrl);
+
+// Xem chi tiết một quy tắc
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
+
+// Xem lịch sử thay đổi quy tắc
+router.get('/:id/history', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.historyCtrl);
+
+// Khởi tạo quy tắc mới 
+router.post('/', authorize(ROLES.ADMIN), validate(createRuleSchema), ctrl.createCtrl);
+
+// Cấu hình quy tắc nghiệp vụ và ngưỡng
 router.patch(
-  '/:id/status',
+  '/:id',
   authorize(ROLES.ADMIN),
   validate(idParamsSchema, 'params'),
-  validate(updateStatusSchema),
-  ctrl.updateStatusCtrl,
+  validate(updateRuleSchema),
+  ctrl.updateCtrl,
 );
-router.delete('/:id', validate(idParamsSchema, 'params'), ctrl.removeCtrl);
+
+// Khôi phục quy tắc về giá trị mặc định 
+router.post(
+  '/:id/reset',
+  authorize(ROLES.ADMIN),
+  validate(idParamsSchema, 'params'),
+  validate(resetRuleSchema),
+  ctrl.resetCtrl,
+);
+
+// Xóa quy tắc
+router.delete('/:id', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.removeCtrl);
 
 module.exports = router;
