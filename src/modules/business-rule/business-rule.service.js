@@ -73,7 +73,63 @@ const DEFAULT_RULES = [
     description: 'Trọng số ưu tiên đề xuất hoạt động học tập tiếp theo.',
     isActive: true,
   },
+  {
+    ruleCode: 'BR-39-MASTERY-DEVELOPING',
+    name: 'Ngưỡng Mastery level DEVELOPING',
+    category: 'MASTERY',
+    value: 40,
+    defaultValue: 40,
+    unit: '%',
+    description: 'Điểm Mastery tối thiểu để đạt level developing.',
+    isActive: true,
+  },
+  {
+    ruleCode: 'BR-39-MASTERY-PROFICIENT',
+    name: 'Ngưỡng Mastery level PROFICIENT',
+    category: 'MASTERY',
+    value: 70,
+    defaultValue: 70,
+    unit: '%',
+    description: 'Điểm Mastery tối thiểu để đạt level proficient.',
+    isActive: true,
+  },
+  {
+    ruleCode: 'BR-39-MASTERY-MASTERED',
+    name: 'Ngưỡng Mastery level MASTERED',
+    category: 'MASTERY',
+    value: 90,
+    defaultValue: 90,
+    unit: '%',
+    description: 'Điểm Mastery tối thiểu để đạt level mastered.',
+    isActive: true,
+  },
 ];
+
+// Fallback dùng khi chưa có DB hoặc cho unit test không muốn hit DB (BR-38/BR-39).
+const DEFAULT_THRESHOLDS = {
+  'mastery.developing': 40,
+  'mastery.proficient': 70,
+  'mastery.mastered': 90,
+};
+
+const THRESHOLD_RULE_CODES = {
+  'mastery.developing': 'BR-39-MASTERY-DEVELOPING',
+  'mastery.proficient': 'BR-39-MASTERY-PROFICIENT',
+  'mastery.mastered': 'BR-39-MASTERY-MASTERED',
+};
+
+// UC-BRL-10: merges configured rule values over the defaults so callers always get a complete map.
+async function getThresholds() {
+  await ensureDefaultRules();
+  const codes = Object.values(THRESHOLD_RULE_CODES);
+  const rows = await BusinessRule.find({ ruleCode: { $in: codes } });
+  const byCode = Object.fromEntries(rows.map((r) => [r.ruleCode, r.value]));
+  const result = { ...DEFAULT_THRESHOLDS };
+  for (const [key, code] of Object.entries(THRESHOLD_RULE_CODES)) {
+    if (byCode[code] !== undefined) result[key] = byCode[code];
+  }
+  return result;
+}
 
 // default rule if not exist in db
 async function ensureDefaultRules() {
@@ -128,6 +184,9 @@ const RULE_VALIDATORS = {
   'BR-17-RETENTION-RISK': (v) => Number.isInteger(v) && v >= 1 || 'Phải là số nguyên >= 1',
   'BR-17-PREREQUISITE': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
   'BR-05-MASTERY-THRESHOLD': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
+  'BR-39-MASTERY-DEVELOPING': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
+  'BR-39-MASTERY-PROFICIENT': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
+  'BR-39-MASTERY-MASTERED': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
   'BR-16-INTERVALS': (v) =>
     (Array.isArray(v) && v.length > 0 && v.every((n) => Number.isInteger(n) && n > 0)
       && v.every((n, i) => i === 0 || n > v[i - 1])) || 'Phải là mảng số nguyên dương tăng dần',
@@ -263,4 +322,6 @@ module.exports = {
   simulate,
   ensureDefaultRules,
   assertValidValue,
+  getThresholds,
+  DEFAULT_THRESHOLDS,
 };
