@@ -1,5 +1,5 @@
 const asyncHandler = require('../../utils/asyncHandler');
-const { ok } = require('../../utils/response');
+const { ok, created } = require('../../utils/response');
 const service = require('./mastery.service');
 
 const listCtrl = asyncHandler(async (req, res) => {
@@ -12,4 +12,24 @@ const getCtrl = asyncHandler(async (req, res) => {
   return ok(res, item);
 });
 
-module.exports = { listCtrl, getCtrl };
+const getTrendCtrl = asyncHandler(async (req, res) => {
+  const trend = await service.getTrend(req.params.id, req.user, req.query);
+  return ok(res, trend);
+});
+
+const setGoalCtrl = asyncHandler(async (req, res) => {
+  const item = await service.setGoal(req.params.id, req.user, req.body.goalScore);
+  return ok(res, item, 'Goal updated');
+});
+
+const markContentCompleteCtrl = asyncHandler(async (req, res) => {
+  const item = await service.markContentComplete(req.user.id, req.body.concept, req.body.contentRef);
+  return created(res, item, 'Progress updated');
+});
+
+const exportReportCtrl = asyncHandler(async (req, res) => {
+  const report = await service.exportReport(req.user.id, req.query);
+  return ok(res, report);
+});
+
+module.exports = { listCtrl, getCtrl, getTrendCtrl, setGoalCtrl, markContentCompleteCtrl, exportReportCtrl };

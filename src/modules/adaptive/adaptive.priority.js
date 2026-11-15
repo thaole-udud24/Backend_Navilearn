@@ -17,8 +17,13 @@ const FACTORS = {
   forgetting: (a) => a.forgetting,
   timeFit: (a) => a.timeFit,
 };
+// Single source for the weighting formula — computePriority sums it, explain finds its max.
+function weightedContributions(a, w) {
+  return Object.fromEntries(Object.keys(w).map((k) => [k, w[k] * FACTORS[k](a)]));
+}
+
 function computePriority(a, w = WEIGHTS) {
-  return Object.keys(w).reduce((sum, k) => sum + w[k] * FACTORS[k](a), 0);
+  return Object.values(weightedContributions(a, w)).reduce((sum, v) => sum + v, 0);
 }
 const DAY_MS = 86400000;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -47,7 +52,8 @@ const REASONS = {
 };
 // BR-12: every recommendation carries a reason = the factor that contributes most to the score.
 function explain(a, w = WEIGHTS) {
-  const top = Object.keys(w).reduce((best, k) => (w[k] * FACTORS[k](a) > w[best] * FACTORS[best](a) ? k : best));
+  const contributions = weightedContributions(a, w);
+  const top = Object.keys(contributions).reduce((best, k) => (contributions[k] > contributions[best] ? k : best));
   return REASONS[top](a);
 }
 
