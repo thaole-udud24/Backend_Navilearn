@@ -10,7 +10,7 @@ const authenticate = asyncHandler(async (req, res, next) => {
 
   try {
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET);
-    req.user = { id: payload.sub, role: payload.role };
+    req.user = { id: payload.sub, role: payload.role, sid: payload.sid };
     return next();
   } catch (err) {
     throw ApiError.unauthorized('Invalid or expired access token');
