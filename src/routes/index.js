@@ -1,7 +1,8 @@
 const express = require('express');
 const authRoutes = require('../modules/account/account.auth.routes');
 const templateRoutes = require('../modules/_template/_template.routes');
-const accountRoutes = require('../modules/account/account.routes');
+const meRoutes = require('../modules/account/account.me.routes');
+const adminAccountRoutes = require('../modules/account/account.admin.routes');
 const assessmentConfigRoutes = require('../modules/assessment-config/assessment-config.routes');
 const adaptiveRoutes = require('../modules/adaptive/adaptive.routes');
 const aiAssistRoutes = require('../modules/ai-assist/ai-assist.routes');
@@ -30,7 +31,8 @@ router.get('/health', (req, res) => res.status(200).json({ success: true, data: 
 router.use('/auth', authRoutes);
 // TEMPLATE module mounted for demo; real modules register their router here the same way.
 router.use('/template-items', templateRoutes);
-router.use('/account-items', accountRoutes);
+router.use('/me', meRoutes);
+router.use('/admin', adminAccountRoutes);
 router.use('/assessment-config-items', assessmentConfigRoutes);
 router.use('/adaptive-items', adaptiveRoutes);
 router.use('/ai-assist-items', aiAssistRoutes);
