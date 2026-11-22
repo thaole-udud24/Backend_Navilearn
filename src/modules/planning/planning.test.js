@@ -137,4 +137,51 @@ describe('planning sessions (PLN-02)', () => {
     expect(plan.sessions).toHaveLength(0);
     expect(plan.save).toHaveBeenCalled();
   });
+  describe('session lifecycle (UC-PLN-03..07)', () => {
+    const at = (h) => new Date(`2026-11-20T${h}:00Z`);
+    const planWith = (...sessions) => ({ owner: 'u1', status: 'active', sessions, save: jest.fn() });
+    const s = (id, h, status = 'planned') => ({ _id: id, startAt: at(h), durationMin: 60, status });
+
+    it('rejects a new session that overlaps, ignores cancelled ones', async () => {
+      Plan.findById.mockResolvedValue(planWith(s('s1', '08:00'), s('s2', '10:00', 'cancelled')));
+      await expect(service.addSession('p1', owner, { concept: 'c', startAt: at('08:30'), durationMin: 30 })).rejects.toMatchObject({ status: 409 });
+      await expect(service.addSession('p1', owner, { concept: 'c', startAt: at('10:00'), durationMin: 30 })).resolves.toBeDefined();
+    });
+
+    it('allows back-to-back sessions and moving a session onto its own slot', async () => {
+      const plan = planWith(s('s1', '08:00'));
+      Plan.findById.mockResolvedValue(plan);
+      await service.addSession('p1', owner, { concept: 'c', startAt: at('09:00'), durationMin: 30 });
+      await expect(service.updateSession('p1', 's1', owner, { durationMin: 45 })).resolves.toBeDefined();
+    });
+
+    it('reschedule rejects overlap; only a planned session can be moved, cancelled or completed', async () => {
+      Plan.findById.mockResolvedValue(planWith(s('s1', '08:00'), s('s2', '09:00'), s('s3', '12:00', 'done')));
+      await expect(service.updateSession('p1', 's2', owner, { startAt: at('08:30') })).rejects.toMatchObject({ status: 409 });
+      await expect(service.updateSession('p1', 's3', owner, { status: 'cancelled' })).rejects.toMatchObject({ status: 409 });
+      await expect(service.updateSession('p1', 's3', owner, { startAt: at('13:00') })).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('cancel keeps the session as status cancelled', async () => {
+      const plan = planWith(s('s1', '08:00'));
+      Plan.findById.mockResolvedValue(plan);
+      await service.updateSession('p1', 's1', owner, { status: 'cancelled' });
+      expect(plan.sessions[0].status).toBe('cancelled');
+    });
+
+    it('note needs a done session, or completion in the same request', async () => {
+      Plan.findById.mockResolvedValue(planWith(s('s1', '08:00')));
+      await expect(service.updateSession('p1', 's1', owner, { note: 'x' })).rejects.toMatchObject({ status: 409 });
+      const plan = planWith(s('s1', '08:00'), s('s2', '10:00', 'done'));
+      Plan.findById.mockResolvedValue(plan);
+      await service.updateSession('p1', 's1', owner, { status: 'done', note: 'ok' });
+      await service.updateSession('p1', 's2', owner, { note: 'hard part: joins' });
+      expect(plan.sessions.map((x) => x.note)).toEqual(['ok', 'hard part: joins']);
+    });
+
+    it('validation: system-only statuses are not accepted from the client', () => {
+      expect(updateSessionSchema.safeParse({ status: 'missed' }).success).toBe(false);
+      expect(updateSessionSchema.safeParse({ note: 'x' }).success).toBe(true);
+    });
+  });
 });

@@ -40,8 +40,24 @@ async function getActive(id, requester) {
   return item;
 }
 
+const endAt = (s) => new Date(new Date(s.startAt).getTime() + s.durationMin * 60000);
+
+// UC-PLN-03/05: a session may not overlap another live session of the same plan.
+// shortcut: checks one plan only, not the student's other plans; widen when plans can coexist.
+function assertNoOverlap(item, candidate, selfId) {
+  const clash = item.sessions.some(
+    (s) =>
+      String(s._id) !== String(selfId) &&
+      s.status !== 'cancelled' &&
+      new Date(s.startAt) < endAt(candidate) &&
+      new Date(candidate.startAt) < endAt(s),
+  );
+  if (clash) throw ApiError.conflict('Session overlaps another session');
+}
+
 async function addSession(id, requester, data) {
   const item = await getActive(id, requester);
+  assertNoOverlap(item, data);
   item.sessions.push(data);
   item.updatedBy = requester.id;
   await item.save();
@@ -52,6 +68,14 @@ async function updateSession(id, sessionId, requester, data) {
   const item = await getActive(id, requester);
   const session = item.sessions.find((s) => String(s._id) === sessionId);
   if (!session) throw ApiError.notFound('Session not found');
+  const { status, note, ...timing } = data;
+  const reschedules = Object.keys(timing).length > 0;
+  // UC-PLN-05/06/07: only a scheduled session can be moved, cancelled or completed.
+  if ((reschedules || status) && session.status !== 'planned') throw ApiError.conflict('Session is not scheduled');
+  // UC-PLN-04: notes are for sessions that are done (or being completed in this same request).
+  if (note !== undefined && (status || session.status) !== 'done') throw ApiError.conflict('Session is not done');
+  if (reschedules) assertNoOverlap(item, { startAt: session.startAt, durationMin: session.durationMin, ...timing }, sessionId);
+
   Object.assign(session, data);
   item.updatedBy = requester.id;
   await item.save();
