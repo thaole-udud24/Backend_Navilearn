@@ -20,6 +20,10 @@ const markContentCompleteSchema = z.object({
   contentRef: z.string().min(1).max(200),
 });
 
+const openContentSchema = z.object({
+  concept: z.string().min(1),
+});
+
 const exportQuerySchema = z.object({
   concept: z.string().optional(),
   from: z.string().datetime().optional(),
@@ -32,5 +36,6 @@ module.exports = {
   trendQuerySchema,
   setGoalSchema,
   markContentCompleteSchema,
+  openContentSchema,
   exportQuerySchema,
 };

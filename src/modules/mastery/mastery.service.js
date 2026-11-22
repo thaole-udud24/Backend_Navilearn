@@ -25,6 +25,34 @@ function levelFor(score, attemptsCount, thresholds) {
   return attemptsCount < MIN_ATTEMPTS_FOR_LEVEL ? 'novice' : deriveLevel(score, thresholds);
 }
 
+const DECAY_DAYS = 14;
+const DECAY_SCORE_FLOOR = 60;
+
+// BR-39: transition Learning State for the attempt that was just graded. `evidenceCount` is used as
+// the proxy for "ít nhất 2 bằng chứng" (attemptsCount after this attempt is applied by the caller).
+// [GAP] Điều kiện "mức AI không quá 1" của BR-39 (PRACTICING→UNDERSTOOD) chưa thể kiểm tra ở đây:
+// không module nào trong hệ thống hiện lưu mức hỗ trợ AI theo từng evidence/attempt. Transition này
+// tạm bỏ qua điều kiện đó cho tới khi pipeline theo dõi AI-help-level được xây (liên quan AIA/BR-38).
+function nextLearningStateForAttempt(currentState, { score, evidenceCount, independentCheck }) {
+  let state = currentState === 'DECAY_RISK' ? 'PRACTICING' : currentState; // "ôn lại" thoát DECAY_RISK
+  if (state === 'LEARNING') state = 'PRACTICING'; // làm bài luyện tập đầu tiên
+  if (state === 'PRACTICING' && score >= 70 && evidenceCount >= 2) state = 'UNDERSTOOD';
+  if (independentCheck && state === 'UNDERSTOOD' && score >= 80) state = 'APPLIED';
+  return state;
+}
+
+// Trạng thái hiển thị: không mutate DB từ đường đọc, chỉ tính "đang có nguy cơ DECAY_RISK ngay lúc
+// này" dựa trên lastAttemptAt/score, để UI phản ánh đúng mà không cần job nền.
+function computeDisplayState(item) {
+  const isEligibleForDecay = ['PRACTICING', 'UNDERSTOOD', 'APPLIED'].includes(item.learningState);
+  if (!isEligibleForDecay) return item.learningState;
+  const daysSinceLastAttempt = item.lastAttemptAt
+    ? (Date.now() - new Date(item.lastAttemptAt).getTime()) / (1000 * 60 * 60 * 24)
+    : Infinity;
+  if (daysSinceLastAttempt > DECAY_DAYS || item.score < DECAY_SCORE_FLOOR) return 'DECAY_RISK';
+  return item.learningState;
+}
+
 async function listForOwner(ownerId, query) {
   const { page, limit, skip } = parsePagination(query);
   const filter = { owner: ownerId, ...(query.concept ? { concept: query.concept } : {}) };
@@ -49,18 +77,24 @@ async function findRaw(ownerId, conceptId) {
 
 // Called by assessment.service right after an attempt is graded (initial_grading) or a question
 // changes and affected attempts are regraded (regrade). Always appends to history (UC-AP-MST-04).
-async function upsertForAttempt(ownerId, conceptId, attemptScorePercent, reason = 'initial_grading') {
+async function upsertForAttempt(ownerId, conceptId, attemptScorePercent, reason = 'initial_grading', { independentCheck = false } = {}) {
   const thresholds = await businessRuleService.getThresholds();
   let item = await MasteryItem.findOne({ owner: ownerId, concept: conceptId });
   const isCorrectAttempt = attemptScorePercent >= 50;
 
   if (!item) {
     const level = levelFor(attemptScorePercent, 1, thresholds);
+    const learningState = nextLearningStateForAttempt('LEARNING', {
+      score: attemptScorePercent,
+      evidenceCount: 1,
+      independentCheck,
+    });
     item = new MasteryItem({
       owner: ownerId,
       concept: conceptId,
       score: attemptScorePercent,
       level,
+      learningState,
       attemptsCount: 1,
       correctCount: isCorrectAttempt ? 1 : 0,
       lastAttemptAt: new Date(),
@@ -71,6 +105,11 @@ async function upsertForAttempt(ownerId, conceptId, attemptScorePercent, reason 
     item.score = Math.round(item.score * (1 - EMA_WEIGHT_NEW) + attemptScorePercent * EMA_WEIGHT_NEW);
     item.attemptsCount += 1;
     item.level = levelFor(item.score, item.attemptsCount, thresholds);
+    item.learningState = nextLearningStateForAttempt(item.learningState, {
+      score: item.score,
+      evidenceCount: item.attemptsCount,
+      independentCheck,
+    });
     item.correctCount += isCorrectAttempt ? 1 : 0;
     item.lastAttemptAt = new Date();
     item.updatedBy = ownerId;
@@ -79,6 +118,21 @@ async function upsertForAttempt(ownerId, conceptId, attemptScorePercent, reason 
 
   await item.save();
   return item;
+}
+
+// BR-39: NOT_SEEN→LEARNING khi sinh viên mở nội dung lần đầu. Idempotent - không hạ cấp trạng thái
+// đã tiến xa hơn (PRACTICING trở lên) nếu gọi lại.
+async function openContent(ownerId, conceptId) {
+  const existing = await MasteryItem.findOne({ owner: ownerId, concept: conceptId });
+  if (existing) return existing;
+  return MasteryItem.create({
+    owner: ownerId,
+    concept: conceptId,
+    score: 0,
+    level: 'novice',
+    learningState: 'LEARNING',
+    createdBy: ownerId,
+  });
 }
 
 // UC-AP-MST-02: seeds Learning State/Mastery right after a placement test, one entry per concept
@@ -91,12 +145,15 @@ async function initializeFromPlacement(ownerId, conceptScores) {
     const existing = await MasteryItem.findOne({ owner: ownerId, concept });
     if (existing) continue; // don't overwrite an already-tracked concept
     const level = deriveLevel(scorePercent, thresholds);
+    // BR-39: "Sau bài đầu vào: đúng từ 50% vào PRACTICING, thấp hơn vào LEARNING".
+    const learningState = scorePercent >= 50 ? 'PRACTICING' : 'LEARNING';
     // eslint-disable-next-line no-await-in-loop
     const item = await MasteryItem.create({
       owner: ownerId,
       concept,
       score: scorePercent,
       level,
+      learningState,
       attemptsCount: 1,
       correctCount: scorePercent >= 50 ? 1 : 0,
       lastAttemptAt: new Date(),
@@ -156,6 +213,7 @@ async function exportReport(ownerId, { concept, from, to } = {}) {
     concept: item.concept,
     score: item.score,
     level: item.level,
+    learningState: computeDisplayState(item),
     attemptsCount: item.attemptsCount,
     goalScore: item.goalScore,
     history: item.history.filter((h) => (!fromDate || h.at >= fromDate) && (!toDate || h.at <= toDate)),
@@ -167,10 +225,13 @@ module.exports = {
   getOwned,
   findRaw,
   upsertForAttempt,
+  openContent,
   initializeFromPlacement,
   getTrend,
   setGoal,
   markContentComplete,
   exportReport,
   deriveLevel,
+  computeDisplayState,
+  nextLearningStateForAttempt,
 };

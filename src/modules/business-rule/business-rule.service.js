@@ -60,7 +60,9 @@ const DEFAULT_RULES = [
     value: 80,
     defaultValue: 80,
     unit: '%',
-    description: 'Mức điểm Mastery cần đạt được để kiến thức chuyển từ PRACTICING sang UNDERSTOOD.',
+    // [CHƯA WIRE] Chờ module Learning State (BR-39 thật: NOT_SEEN→LEARNING→PRACTICING→UNDERSTOOD→APPLIED)
+    // được xây; hiện chưa có code nào đọc rule này, sửa giá trị ở đây chưa có tác dụng.
+    description: 'Mức điểm Mastery cần đạt được để kiến thức chuyển từ PRACTICING sang UNDERSTOOD. (Chưa áp dụng - chờ module Learning State)',
     isActive: true,
   },
   {
@@ -74,33 +76,36 @@ const DEFAULT_RULES = [
     isActive: true,
   },
   {
-    ruleCode: 'BR-39-MASTERY-DEVELOPING',
-    name: 'Ngưỡng Mastery level DEVELOPING',
+    // Lưu ý: đây KHÔNG phải BR-39 chính thức trong BRD (BR-39 thật là state machine Learning State
+    // NOT_SEEN→LEARNING→PRACTICING→UNDERSTOOD→APPLIED, chưa được xây). 3 rule MST-LEVEL-* này chỉ
+    // là ngưỡng nội bộ cho chỉ số "level" (novice/developing/proficient/mastered) của mastery.service.js.
+    ruleCode: 'MST-LEVEL-DEVELOPING',
+    name: 'Ngưỡng Mastery level DEVELOPING (nội bộ, không phải BR-39)',
     category: 'MASTERY',
     value: 40,
     defaultValue: 40,
     unit: '%',
-    description: 'Điểm Mastery tối thiểu để đạt level developing.',
+    description: 'Điểm Mastery tối thiểu để đạt level developing (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
     isActive: true,
   },
   {
-    ruleCode: 'BR-39-MASTERY-PROFICIENT',
-    name: 'Ngưỡng Mastery level PROFICIENT',
+    ruleCode: 'MST-LEVEL-PROFICIENT',
+    name: 'Ngưỡng Mastery level PROFICIENT (nội bộ, không phải BR-39)',
     category: 'MASTERY',
     value: 70,
     defaultValue: 70,
     unit: '%',
-    description: 'Điểm Mastery tối thiểu để đạt level proficient.',
+    description: 'Điểm Mastery tối thiểu để đạt level proficient (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
     isActive: true,
   },
   {
-    ruleCode: 'BR-39-MASTERY-MASTERED',
-    name: 'Ngưỡng Mastery level MASTERED',
+    ruleCode: 'MST-LEVEL-MASTERED',
+    name: 'Ngưỡng Mastery level MASTERED (nội bộ, không phải BR-39)',
     category: 'MASTERY',
     value: 90,
     defaultValue: 90,
     unit: '%',
-    description: 'Điểm Mastery tối thiểu để đạt level mastered.',
+    description: 'Điểm Mastery tối thiểu để đạt level mastered (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
     isActive: true,
   },
 ];
@@ -113,9 +118,9 @@ const DEFAULT_THRESHOLDS = {
 };
 
 const THRESHOLD_RULE_CODES = {
-  'mastery.developing': 'BR-39-MASTERY-DEVELOPING',
-  'mastery.proficient': 'BR-39-MASTERY-PROFICIENT',
-  'mastery.mastered': 'BR-39-MASTERY-MASTERED',
+  'mastery.developing': 'MST-LEVEL-DEVELOPING',
+  'mastery.proficient': 'MST-LEVEL-PROFICIENT',
+  'mastery.mastered': 'MST-LEVEL-MASTERED',
 };
 
 // UC-BRL-10: merges configured rule values over the defaults so callers always get a complete map.
@@ -184,9 +189,9 @@ const RULE_VALIDATORS = {
   'BR-17-RETENTION-RISK': (v) => Number.isInteger(v) && v >= 1 || 'Phải là số nguyên >= 1',
   'BR-17-PREREQUISITE': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
   'BR-05-MASTERY-THRESHOLD': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
-  'BR-39-MASTERY-DEVELOPING': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
-  'BR-39-MASTERY-PROFICIENT': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
-  'BR-39-MASTERY-MASTERED': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
+  'MST-LEVEL-DEVELOPING': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
+  'MST-LEVEL-PROFICIENT': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
+  'MST-LEVEL-MASTERED': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
   'BR-16-INTERVALS': (v) =>
     (Array.isArray(v) && v.length > 0 && v.every((n) => Number.isInteger(n) && n > 0)
       && v.every((n, i) => i === 0 || n > v[i - 1])) || 'Phải là mảng số nguyên dương tăng dần',
@@ -199,12 +204,22 @@ const RULE_VALIDATORS = {
   },
 };
 
-function assertValidValue(ruleCode, value) {
+function assertValidValue(ruleCode, value, defaultValue) {
   const check = RULE_VALIDATORS[ruleCode];
-  if(!check) return;
-  const result = check(value);
-  if(result !== true){
-    throw ApiError.badRequest(result, 'INVALID_RULE_VALUE', [{ field: 'value', message: result }]);
+  if (check) {
+    const result = check(value);
+    if (result !== true) {
+      throw ApiError.badRequest(result, 'INVALID_RULE_VALUE', [{ field: 'value', message: result }]);
+    }
+    return;
+  }
+  // BR-51: rule không nằm trong danh mục chuẩn (do admin tự tạo) vẫn phải có biên tối thiểu -
+  // không được rỗng, và nếu đã có defaultValue thì value mới phải cùng kiểu dữ liệu.
+  if (value === undefined || value === null || value === '') {
+    throw ApiError.badRequest('Giá trị không được để trống', 'INVALID_RULE_VALUE', [{ field: 'value', message: 'Giá trị không được để trống' }]);
+  }
+  if (defaultValue !== undefined && typeof value !== typeof defaultValue) {
+    throw ApiError.badRequest('Giá trị phải cùng kiểu dữ liệu với giá trị mặc định', 'INVALID_RULE_VALUE', [{ field: 'value', message: 'Sai kiểu dữ liệu' }]);
   }
 }
 
@@ -212,7 +227,7 @@ async function create(requesterId, data) {
   const existing = await BusinessRule.findOne({ruleCode: data.ruleCode.toUpperCase()});
   if (existing) throw ApiError.conflict('Mã quy tắc đã tồn tại trong hệ thống', 'RULE_CODE_EXISTS');
 
-  assertValidValue(data.ruleCode.toUpperCase(), data.value);
+  assertValidValue(data.ruleCode.toUpperCase(), data.value, data.defaultValue);
 
   const item = await BusinessRule.create({
     ...data,
@@ -226,7 +241,7 @@ async function create(requesterId, data) {
 async function update(id, data, requesterId) {
   const item = await BusinessRule.findById(id);
   if (!item) throw ApiError.notFound('Business rule not found');
-  if (data.value !== undefined) assertValidValue(item.ruleCode, data.value);
+  if (data.value !== undefined) assertValidValue(item.ruleCode, data.value, item.defaultValue);
   
   const oldValue = item.value;
   const isValueChanged = data.value !== undefined && JSON.stringify(data.value) !== JSON.stringify(oldValue);
@@ -295,7 +310,7 @@ async function exportRules() {
 
 async function simulate({ ruleCode, value }) {
   const rule = await getByCode(ruleCode);
-  assertValidValue(rule.ruleCode, value);
+  assertValidValue(rule.ruleCode, value, rule.defaultValue);
   const changed = JSON.stringify(rule.value) !== JSON.stringify(value);
   return {
     ruleCode: rule.ruleCode,

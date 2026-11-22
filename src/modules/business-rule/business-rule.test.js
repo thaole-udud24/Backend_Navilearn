@@ -76,5 +76,18 @@ describe('business-rule module', () => {
   it('rejects malformed id', () => {
     expect(idParamsSchema.safeParse({ id: 'abc' }).success).toBe(false);
   });
-}); 
+
+  it('rejects empty value for a custom ruleCode without a validator (BR-51)', () => {
+    expect(() => assertValidValue('BR-99-CUSTOM', '')).toThrow();
+    expect(() => assertValidValue('BR-99-CUSTOM', undefined)).toThrow();
+  });
+
+  it('rejects a custom ruleCode value whose type differs from its defaultValue', () => {
+    expect(() => assertValidValue('BR-99-CUSTOM', 'not-a-number', 10)).toThrow();
+  });
+
+  it('accepts a custom ruleCode value matching its defaultValue type', () => {
+    expect(() => assertValidValue('BR-99-CUSTOM', 20, 10)).not.toThrow();
+  });
+});
 
