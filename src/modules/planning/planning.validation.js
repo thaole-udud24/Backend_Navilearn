@@ -10,7 +10,10 @@ const sessionSchema = z.object({
 
 const updateSessionSchema = sessionSchema
   .partial()
-  .extend({ status: z.enum(['planned', 'done', 'missed']).optional() })
+  .extend({
+    status: z.enum(['done', 'cancelled']).optional(), // 'missed' is set by the system (AP-PLN-01)
+    note: z.string().trim().min(1).max(1000).optional(),
+  })
   .refine((o) => Object.keys(o).length > 0, 'No fields to update');
 
 const createSchema = z.object({
