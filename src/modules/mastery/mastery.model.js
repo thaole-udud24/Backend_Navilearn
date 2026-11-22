@@ -32,6 +32,13 @@ const masterySchema = new mongoose.Schema(
     concept: { type: mongoose.Schema.Types.ObjectId, ref: 'Concept', required: true },
     score: { type: Number, default: 0, min: 0, max: 100 },
     level: { type: String, enum: ['novice', 'developing', 'proficient', 'mastered'], default: 'novice' },
+    // BR-39: Learning State machine (NOT_SEEN→LEARNING→PRACTICING→UNDERSTOOD→APPLIED, nhánh DECAY_RISK).
+    // Không có bản ghi (chưa mở nội dung) tương đương NOT_SEEN; từ khi có bản ghi, trạng thái tối thiểu là LEARNING.
+    learningState: {
+      type: String,
+      enum: ['LEARNING', 'PRACTICING', 'UNDERSTOOD', 'APPLIED', 'DECAY_RISK'],
+      default: 'LEARNING',
+    },
     attemptsCount: { type: Number, default: 0 },
     correctCount: { type: Number, default: 0 },
     lastAttemptAt: { type: Date, default: null },

@@ -207,7 +207,9 @@ async function submit(id, requesterId, answers) {
   attempt.scoreHistory.push({ score, reason: 'initial_grading', changedBy: requesterId });
   await attempt.save();
 
-  await masteryService.upsertForAttempt(requesterId, attempt.concept, attempt.score, 'initial_grading');
+  await masteryService.upsertForAttempt(requesterId, attempt.concept, attempt.score, 'initial_grading', {
+    independentCheck: attempt.independentCheck,
+  });
   if (config.kind === 'placement') {
     await masteryService.initializeFromPlacement(requesterId, [
       { concept: attempt.concept, scorePercent: score },

@@ -21,14 +21,14 @@ router.use(authenticate);
 router.get('/export', authorize(ROLES.ADMIN), ctrl.exportCtrl);
 router.post('/simulate', authorize(ROLES.ADMIN), validate(simulateRuleSchema), ctrl.simulateCtrl);
 
-// Xem danh sách quy tắc nghiệp vụ
-router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
+// Xem danh sách quy tắc nghiệp vụ (chỉ ADMIN - BR-01: dữ liệu cấu hình không dành cho sinh viên)
+router.get('/', authorize(ROLES.ADMIN), validate(listQuerySchema, 'query'), ctrl.listCtrl);
 
 // Lấy quy tắc theo mã
-router.get('/code/:code', ctrl.getByCodeCtrl);
+router.get('/code/:code', authorize(ROLES.ADMIN), ctrl.getByCodeCtrl);
 
 // Xem chi tiết một quy tắc
-router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
+router.get('/:id', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.getCtrl);
 
 // Xem lịch sử thay đổi quy tắc
 router.get('/:id/history', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.historyCtrl);
