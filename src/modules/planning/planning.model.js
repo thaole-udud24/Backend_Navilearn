@@ -7,7 +7,8 @@ const sessionSchema = new mongoose.Schema({
   concept: { type: mongoose.Schema.Types.ObjectId, ref: 'Concept', required: true },
   startAt: { type: Date, required: true },
   durationMin: { type: Number, required: true, min: 5, max: 480 },
-  status: { type: String, enum: ['planned', 'done', 'missed'], default: 'planned' },
+  status: { type: String, enum: ['planned', 'done', 'missed', 'cancelled'], default: 'planned' },
+  note: { type: String, trim: true, maxlength: 1000 },
 });
 
 const planSchema = new mongoose.Schema(

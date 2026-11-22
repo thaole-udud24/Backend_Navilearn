@@ -123,6 +123,11 @@ describe('replan (AP-ADP-03)', () => {
     expect(proposed.sessions.map((s) => s.startAt.toISOString())).toEqual(['2026-11-11T09:30:00.000Z', '2026-11-12T08:00:00.000Z']);
     expect(reason).toBeTruthy();
   });
+    it('ignores cancelled sessions: not counted as missed, not rescheduled', async () => {
+    planningService.getOwned.mockResolvedValue(plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'cancelled' }]));
+    await expect(service.checkReplan('u1', 'p1', now)).resolves.toEqual({ needed: false, missedCount: 0 });
+    await expect(service.replan('u1', 'p1', now)).rejects.toMatchObject({ status: 409 });
+  });
 });
 
 describe('start activity (UC-ADP-02)', () => {

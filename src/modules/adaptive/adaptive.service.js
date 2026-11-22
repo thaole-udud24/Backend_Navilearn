@@ -53,7 +53,7 @@ async function getActivePlan(ownerId, planId) {
   return plan;
 }
 
-const unfinished = (plan) => plan.sessions.filter((s) => s.status !== 'done');
+const unfinished = (plan) => plan.sessions.filter((s) => s.status !== 'done' && s.status !== 'cancelled');
 const missedSessions = (plan, now) => unfinished(plan).filter((s) => s.status === 'missed' || s.startAt < now);
 
 // AP-ADP-02: does this plan need replanning? shortcut: only missed sessions are detected;
