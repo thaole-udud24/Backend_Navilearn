@@ -1,20 +1,19 @@
 const { z } = require('zod');
+const { ROLES } = require('../../shared/roles');
 
-const createSchema = z.object({
-  title: z.string().min(1).max(200),
-  content: z.string().min(1).max(2000),
+const roleQuerySchema = z.object({
+  role: z.enum(Object.values(ROLES)).optional(),
 });
 
-const updateStatusSchema = z.object({
-  status: z.enum(['open', 'in_progress', 'resolved']),
+const accountIdParamsSchema = z.object({
+  accountId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'ID không hợp lệ'),
 });
 
-const listQuerySchema = z.object({
+const deniedLogQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
-  status: z.enum(['open', 'in_progress', 'resolved']).optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
 });
 
-const idParamsSchema = z.object({ id: z.string().min(1) });
-
-module.exports = { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema };
+module.exports = { roleQuerySchema, accountIdParamsSchema, deniedLogQuerySchema };

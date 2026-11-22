@@ -9,7 +9,13 @@ const listCtrl = asyncHandler(async (req, res) => {
 
 const getCtrl = asyncHandler(async (req, res) => {
   const item = await service.getOwned(req.params.id, req.user);
-  return ok(res, item);
+  const payload = { ...item.toObject(), learningState: service.computeDisplayState(item) };
+  return ok(res, payload);
+});
+
+const openContentCtrl = asyncHandler(async (req, res) => {
+  const item = await service.openContent(req.user.id, req.body.concept);
+  return created(res, item, 'Content opened');
 });
 
 const getTrendCtrl = asyncHandler(async (req, res) => {
@@ -32,4 +38,4 @@ const exportReportCtrl = asyncHandler(async (req, res) => {
   return ok(res, report);
 });
 
-module.exports = { listCtrl, getCtrl, getTrendCtrl, setGoalCtrl, markContentCompleteCtrl, exportReportCtrl };
+module.exports = { listCtrl, getCtrl, getTrendCtrl, setGoalCtrl, markContentCompleteCtrl, exportReportCtrl, openContentCtrl };
