@@ -1,37 +1,57 @@
-const { PERMISSION_MATRIX } = require('../../shared/permission-matrix');
-const { ROLES } = require('../../shared/roles');
-const { roleQuerySchema, accountIdParamsSchema } = require('./account.rbac.validation');
-const { getPermissionMatrix } = require('./account.rbac.service');
+process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'test_access_secret';
 
-describe('account rbac submodule (UC-RBAC)', () => {
-  it('permission matrix covers every module with both roles defined', () => {
-    expect(PERMISSION_MATRIX.length).toBeGreaterThan(0);
-    PERMISSION_MATRIX.forEach((row) => {
-      expect(row.roles[ROLES.STUDENT]).toBeDefined();
-      expect(row.roles[ROLES.ADMIN]).toBeDefined();
-    });
+const request = require('supertest');
+const jwt = require('jsonwebtoken');
+const app = require('../../app');
+const service = require('./account.rbac.service');
+const { ROLE_CATALOG, PERMISSION_MATRIX, effectivePermissions } = require('./account.rbac.permissions');
+
+describe('RBAC catalog and permission matrix', () => {
+  it('exposes only the two BRD login roles', () => {
+    expect(ROLE_CATALOG.map((role) => role.code)).toEqual(['student', 'admin']);
   });
 
-  it('getPermissionMatrix(undefined) returns full matrix', () => {
-    expect(getPermissionMatrix(undefined)).toBe(PERMISSION_MATRIX);
+  it('does not grant admin access to personal learning data', () => {
+    const personal = PERMISSION_MATRIX.filter((row) =>
+      ['ASM', 'MST', 'PLN', 'ADP', 'REV', 'RSK', 'AIA', 'RPT'].includes(row.module),
+    );
+    expect(personal.every((row) => row.admin === 'none')).toBe(true);
   });
 
-  it('getPermissionMatrix(role) only keeps that role column', () => {
-    const filtered = getPermissionMatrix(ROLES.STUDENT);
-    filtered.forEach((row) => {
-      expect(Object.keys(row.roles)).toEqual([ROLES.STUDENT]);
-    });
+  it('derives effective permissions and filters the matrix', () => {
+    expect(effectivePermissions('student').some((permission) => permission.module === 'PLN')).toBe(true);
+    expect(service.matrix({ role: 'admin', module: 'RBAC' })).toHaveLength(2);
+    expect(service.matrix({ search: 'rubric' })).toHaveLength(1);
+  });
+});
+
+describe('RBAC route access', () => {
+  const tokenFor = (role) =>
+    jwt.sign({ sub: '64b000000000000000000001', role, sid: 'x' }, process.env.JWT_ACCESS_SECRET);
+
+  it('requires authentication', async () => {
+    expect((await request(app).get('/api/v1/rbac-items/matrix')).status).toBe(401);
   });
 
-  it('rejects an invalid role in query', () => {
-    expect(roleQuerySchema.safeParse({ role: 'superadmin' }).success).toBe(false);
+  it('rejects student access', async () => {
+    const res = await request(app)
+      .get('/api/v1/rbac-items/matrix')
+      .set('Authorization', `Bearer ${tokenFor('student')}`);
+    expect(res.status).toBe(403);
   });
 
-  it('rejects a malformed accountId param', () => {
-    expect(accountIdParamsSchema.safeParse({ accountId: 'abc' }).success).toBe(false);
+  it('returns the matrix to an admin without database access', async () => {
+    const res = await request(app)
+      .get('/api/v1/rbac-items/matrix')
+      .set('Authorization', `Bearer ${tokenFor('admin')}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(PERMISSION_MATRIX.length);
   });
 
-  it('accepts a valid accountId param', () => {
-    expect(accountIdParamsSchema.safeParse({ accountId: '507f1f77bcf86cd799439011' }).success).toBe(true);
+  it('validates effective-permission account ids', async () => {
+    const res = await request(app)
+      .get('/api/v1/rbac-items/effective/not-an-id')
+      .set('Authorization', `Bearer ${tokenFor('admin')}`);
+    expect(res.status).toBe(400);
   });
 });
