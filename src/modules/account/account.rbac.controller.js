@@ -1,32 +1,19 @@
 const asyncHandler = require('../../utils/asyncHandler');
-const { ok, created, noContent } = require('../../utils/response');
+const { ok } = require('../../utils/response');
 const service = require('./account.rbac.service');
-const { ROLES } = require('../../shared/roles');
 
-const createCtrl = asyncHandler(async (req, res) => {
-  const item = await service.create(req.user.id, req.body);
-  return created(res, item);
-});
-
-const listCtrl = asyncHandler(async (req, res) => {
-  const { items, meta } =
-    req.user.role === ROLES.ADMIN ? await service.listAll(req.query) : await service.listForOwner(req.user.id, req.query);
+const rolesCtrl = asyncHandler(async (req, res) => ok(res, await service.listRoles()));
+const matrixCtrl = asyncHandler(async (req, res) => ok(res, service.matrix(req.query)));
+const effectiveCtrl = asyncHandler(async (req, res) => ok(res, await service.effective(req.params.userId)));
+const deniedLogsCtrl = asyncHandler(async (req, res) => {
+  const { items, meta } = await service.deniedLogs(req.query);
   return ok(res, items, 'OK', meta);
 });
-
-const getCtrl = asyncHandler(async (req, res) => {
-  const item = await service.getOwned(req.params.id, req.user);
-  return ok(res, item);
+const exportCtrl = asyncHandler(async (req, res) => {
+  const csv = await service.exportMatrix(req.query, { ...req.user, ip: req.ip });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="rbac-permission-matrix.csv"');
+  return res.status(200).send(csv);
 });
 
-const updateStatusCtrl = asyncHandler(async (req, res) => {
-  const item = await service.updateStatus(req.params.id, req.user.id, req.body.status);
-  return ok(res, item, 'Status updated');
-});
-
-const removeCtrl = asyncHandler(async (req, res) => {
-  await service.remove(req.params.id, req.user);
-  return noContent(res);
-});
-
-module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl };
+module.exports = { rolesCtrl, matrixCtrl, effectiveCtrl, deniedLogsCtrl, exportCtrl };

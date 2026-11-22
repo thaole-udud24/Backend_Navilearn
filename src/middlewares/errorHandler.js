@@ -1,11 +1,17 @@
 const ApiError = require('../utils/ApiError');
 const logger = require('../config/logger');
 const env = require('../config/env');
+const { recordDenied } = require('../shared/deniedAccess');
 
 // Single place that turns any thrown error into a response. Never leak stack/internal info.
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   if (err instanceof ApiError) {
+    if (err.status === 403 && req.user) {
+      recordDenied(req, [], err.message).catch((recordError) =>
+        req.log?.error({ err: recordError }, 'Failed to write denied-access log'),
+      );
+    }
     return res.status(err.status).json({
       success: false,
       message: err.message,

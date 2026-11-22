@@ -3,22 +3,16 @@ const authenticate = require('../../middlewares/authenticate');
 const authorize = require('../../middlewares/authorize');
 const validate = require('../../middlewares/validate');
 const { ROLES } = require('../../shared/roles');
-const { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema } = require('./account.rbac.validation');
+const v = require('./account.rbac.validation');
 const ctrl = require('./account.rbac.controller');
 
 const router = express.Router();
+router.use(authenticate, authorize(ROLES.ADMIN));
 
-router.use(authenticate);
-router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
-router.post('/', authorize(ROLES.STUDENT), validate(createSchema), ctrl.createCtrl);
-router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
-router.patch(
-  '/:id/status',
-  authorize(ROLES.ADMIN),
-  validate(idParamsSchema, 'params'),
-  validate(updateStatusSchema),
-  ctrl.updateStatusCtrl,
-);
-router.delete('/:id', validate(idParamsSchema, 'params'), ctrl.removeCtrl);
+router.get('/roles', ctrl.rolesCtrl);
+router.get('/matrix/export', validate(v.exportQuerySchema, 'query'), ctrl.exportCtrl);
+router.get('/matrix', validate(v.matrixQuerySchema, 'query'), ctrl.matrixCtrl);
+router.get('/effective/:userId', validate(v.userParamsSchema, 'params'), ctrl.effectiveCtrl);
+router.get('/denied-logs', validate(v.deniedQuerySchema, 'query'), ctrl.deniedLogsCtrl);
 
 module.exports = router;
