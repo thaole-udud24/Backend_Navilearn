@@ -9,6 +9,13 @@ const sessionSchema = new mongoose.Schema({
   durationMin: { type: Number, required: true, min: 5, max: 480 },
   status: { type: String, enum: ['planned', 'done', 'missed', 'cancelled'], default: 'planned' },
   note: { type: String, trim: true, maxlength: 1000 },
+  // UC-PLN-TPL-03: carried over from a plan-template step (or set by hand) so a session can be a
+  // real mini-lesson — theory to read, then a short quiz before it can be marked done.
+  theoryContent: { type: String, trim: true, maxlength: 8000, default: '' },
+  questions: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'QuestionItem' }], default: [] },
+  // Gate: a session that carries questions can't be marked done until its quiz is passed (see
+  // planning.service.updateSession / submitSessionQuiz).
+  quizPassed: { type: Boolean, default: false },
 });
 
 const planSchema = new mongoose.Schema(

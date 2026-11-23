@@ -33,7 +33,7 @@ router.get('/:id', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), c
 // Xem lịch sử thay đổi quy tắc
 router.get('/:id/history', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.historyCtrl);
 
-// Khởi tạo quy tắc mới 
+// Khởi tạo quy tắc mới
 router.post('/', authorize(ROLES.ADMIN), validate(createRuleSchema), ctrl.createCtrl);
 
 // Cấu hình quy tắc nghiệp vụ và ngưỡng
@@ -45,7 +45,7 @@ router.patch(
   ctrl.updateCtrl,
 );
 
-// Khôi phục quy tắc về giá trị mặc định 
+// Khôi phục quy tắc về giá trị mặc định
 router.post(
   '/:id/reset',
   authorize(ROLES.ADMIN),

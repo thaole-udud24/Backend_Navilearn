@@ -27,6 +27,21 @@ const essayFeedbackCtrl = asyncHandler(async (req, res) => {
   return ok(res, result);
 });
 
+const generatePlanCtrl = asyncHandler(async (req, res) => {
+  const result = await service.generateStudyPlan(req.user.id, req.body.goalId);
+  return created(res, result, 'Study plan proposed');
+});
+
+const generateConceptCtrl = asyncHandler(async (req, res) => {
+  const draft = await service.generateConceptDraft(req.user.id, req.body);
+  return ok(res, draft, 'Concept draft generated');
+});
+
+const generateTemplateCtrl = asyncHandler(async (req, res) => {
+  const draft = await service.generateTemplateDraft(req.user.id, req.body);
+  return ok(res, draft, 'Plan template draft generated');
+});
+
 const listCtrl = asyncHandler(async (req, res) => {
   const { items, meta } = await service.list(req.user.id, req.query);
   return ok(res, items, 'OK', meta);
@@ -58,6 +73,9 @@ module.exports = {
   askCtrl,
   explainWrongCtrl,
   essayFeedbackCtrl,
+  generatePlanCtrl,
+  generateConceptCtrl,
+  generateTemplateCtrl,
   listCtrl,
   getCtrl,
   removeCtrl,

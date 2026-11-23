@@ -10,7 +10,8 @@ const DEFAULT_RULES = [
     value: 0.7,
     defaultValue: 0.7,
     unit: 'tỷ lệ (0-1)',
-    description: 'Nếu tỷ lệ trợ giúp từ AI vượt ngưỡng này trong lượt làm bài, sinh viên bắt buộc làm bài kiểm chứng độc lập.',
+    description:
+      'Nếu tỷ lệ trợ giúp từ AI vượt ngưỡng này trong lượt làm bài, sinh viên bắt buộc làm bài kiểm chứng độc lập.',
     isActive: true,
   },
   {
@@ -62,7 +63,8 @@ const DEFAULT_RULES = [
     unit: '%',
     // [CHƯA WIRE] Chờ module Learning State (BR-39 thật: NOT_SEEN→LEARNING→PRACTICING→UNDERSTOOD→APPLIED)
     // được xây; hiện chưa có code nào đọc rule này, sửa giá trị ở đây chưa có tác dụng.
-    description: 'Mức điểm Mastery cần đạt được để kiến thức chuyển từ PRACTICING sang UNDERSTOOD. (Chưa áp dụng - chờ module Learning State)',
+    description:
+      'Mức điểm Mastery cần đạt được để kiến thức chuyển từ PRACTICING sang UNDERSTOOD. (Chưa áp dụng - chờ module Learning State)',
     isActive: true,
   },
   {
@@ -85,7 +87,8 @@ const DEFAULT_RULES = [
     value: 40,
     defaultValue: 40,
     unit: '%',
-    description: 'Điểm Mastery tối thiểu để đạt level developing (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
+    description:
+      'Điểm Mastery tối thiểu để đạt level developing (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
     isActive: true,
   },
   {
@@ -95,7 +98,8 @@ const DEFAULT_RULES = [
     value: 70,
     defaultValue: 70,
     unit: '%',
-    description: 'Điểm Mastery tối thiểu để đạt level proficient (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
+    description:
+      'Điểm Mastery tối thiểu để đạt level proficient (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
     isActive: true,
   },
   {
@@ -105,7 +109,8 @@ const DEFAULT_RULES = [
     value: 90,
     defaultValue: 90,
     unit: '%',
-    description: 'Điểm Mastery tối thiểu để đạt level mastered (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
+    description:
+      'Điểm Mastery tối thiểu để đạt level mastered (chỉ số nội bộ, không thuộc Learning State BR-39 trong BRD).',
     isActive: true,
   },
 ];
@@ -147,26 +152,26 @@ async function ensureDefaultRules() {
 async function listAll(query) {
   await ensureDefaultRules();
 
-  const {page, limit, skip} = parsePagination(query);
+  const { page, limit, skip } = parsePagination(query);
   const filter = {};
 
-  if(query.category){
+  if (query.category) {
     filter.category = query.category;
   }
-  if(query.isActive !== undefined){
+  if (query.isActive !== undefined) {
     filter.isActive = query.isActive === 'true';
   }
-  if(query.search){
+  if (query.search) {
     filter.$or = [
-      {ruleCode: {$regex: query.search, $options: 'i'}},
-      {name: {$regex: query.search, $options: 'i'}},
+      { ruleCode: { $regex: query.search, $options: 'i' } },
+      { name: { $regex: query.search, $options: 'i' } },
     ];
   }
-  const  [items, total] = await Promise.all([
-    BusinessRule.find(filter).sort({ruleCode: 1}).skip(skip).limit(limit),
+  const [items, total] = await Promise.all([
+    BusinessRule.find(filter).sort({ ruleCode: 1 }).skip(skip).limit(limit),
     BusinessRule.countDocuments(filter),
   ]);
-  return {items, meta: buildMeta(page, limit, total)};
+  return { items, meta: buildMeta(page, limit, total) };
 }
 
 async function getById(id) {
@@ -176,25 +181,28 @@ async function getById(id) {
 }
 
 async function getByCode(ruleCode) {
-  const item = await BusinessRule.findOne({ruleCode: ruleCode.toUpperCase()});
+  const item = await BusinessRule.findOne({ ruleCode: ruleCode.toUpperCase() });
   if (!item) throw ApiError.notFound(`Business rule ${ruleCode} not found`);
   return item;
-} 
+}
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 const RULE_VALIDATORS = {
-  'BR-15': (v) => isNum(v) && v > 0 && v <= 1 || 'Ngưỡng AI_Help_Ratio phải trong (0, 1]',
-  'BR-17-FALLING-BEHIND': (v) => Number.isInteger(v) && v >= 1 || 'Phải là số nguyên >= 1',
-  'BR-17-RETENTION-RISK': (v) => Number.isInteger(v) && v >= 1 || 'Phải là số nguyên >= 1',
-  'BR-17-PREREQUISITE': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
-  'BR-05-MASTERY-THRESHOLD': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
-  'MST-LEVEL-DEVELOPING': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
-  'MST-LEVEL-PROFICIENT': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
-  'MST-LEVEL-MASTERED': (v) => isNum(v) && v >= 0 && v <= 100 || 'Phải trong khoảng 0-100',
+  'BR-15': (v) => (isNum(v) && v > 0 && v <= 1) || 'Ngưỡng AI_Help_Ratio phải trong (0, 1]',
+  'BR-17-FALLING-BEHIND': (v) => (Number.isInteger(v) && v >= 1) || 'Phải là số nguyên >= 1',
+  'BR-17-RETENTION-RISK': (v) => (Number.isInteger(v) && v >= 1) || 'Phải là số nguyên >= 1',
+  'BR-17-PREREQUISITE': (v) => (isNum(v) && v >= 0 && v <= 100) || 'Phải trong khoảng 0-100',
+  'BR-05-MASTERY-THRESHOLD': (v) => (isNum(v) && v >= 0 && v <= 100) || 'Phải trong khoảng 0-100',
+  'MST-LEVEL-DEVELOPING': (v) => (isNum(v) && v >= 0 && v <= 100) || 'Phải trong khoảng 0-100',
+  'MST-LEVEL-PROFICIENT': (v) => (isNum(v) && v >= 0 && v <= 100) || 'Phải trong khoảng 0-100',
+  'MST-LEVEL-MASTERED': (v) => (isNum(v) && v >= 0 && v <= 100) || 'Phải trong khoảng 0-100',
   'BR-16-INTERVALS': (v) =>
-    (Array.isArray(v) && v.length > 0 && v.every((n) => Number.isInteger(n) && n > 0)
-      && v.every((n, i) => i === 0 || n > v[i - 1])) || 'Phải là mảng số nguyên dương tăng dần',
+    (Array.isArray(v) &&
+      v.length > 0 &&
+      v.every((n) => Number.isInteger(n) && n > 0) &&
+      v.every((n, i) => i === 0 || n > v[i - 1])) ||
+    'Phải là mảng số nguyên dương tăng dần',
   'BR-12-NBA-WEIGHTS': (v) => {
     if (!v || typeof v !== 'object') return 'Phải là object trọng số';
     const keys = ['urgency', 'weakness', 'prerequisite'];
@@ -216,15 +224,19 @@ function assertValidValue(ruleCode, value, defaultValue) {
   // BR-51: rule không nằm trong danh mục chuẩn (do admin tự tạo) vẫn phải có biên tối thiểu -
   // không được rỗng, và nếu đã có defaultValue thì value mới phải cùng kiểu dữ liệu.
   if (value === undefined || value === null || value === '') {
-    throw ApiError.badRequest('Giá trị không được để trống', 'INVALID_RULE_VALUE', [{ field: 'value', message: 'Giá trị không được để trống' }]);
+    throw ApiError.badRequest('Giá trị không được để trống', 'INVALID_RULE_VALUE', [
+      { field: 'value', message: 'Giá trị không được để trống' },
+    ]);
   }
   if (defaultValue !== undefined && typeof value !== typeof defaultValue) {
-    throw ApiError.badRequest('Giá trị phải cùng kiểu dữ liệu với giá trị mặc định', 'INVALID_RULE_VALUE', [{ field: 'value', message: 'Sai kiểu dữ liệu' }]);
+    throw ApiError.badRequest('Giá trị phải cùng kiểu dữ liệu với giá trị mặc định', 'INVALID_RULE_VALUE', [
+      { field: 'value', message: 'Sai kiểu dữ liệu' },
+    ]);
   }
 }
 
 async function create(requesterId, data) {
-  const existing = await BusinessRule.findOne({ruleCode: data.ruleCode.toUpperCase()});
+  const existing = await BusinessRule.findOne({ ruleCode: data.ruleCode.toUpperCase() });
   if (existing) throw ApiError.conflict('Mã quy tắc đã tồn tại trong hệ thống', 'RULE_CODE_EXISTS');
 
   assertValidValue(data.ruleCode.toUpperCase(), data.value, data.defaultValue);
@@ -242,11 +254,11 @@ async function update(id, data, requesterId) {
   const item = await BusinessRule.findById(id);
   if (!item) throw ApiError.notFound('Business rule not found');
   if (data.value !== undefined) assertValidValue(item.ruleCode, data.value, item.defaultValue);
-  
+
   const oldValue = item.value;
   const isValueChanged = data.value !== undefined && JSON.stringify(data.value) !== JSON.stringify(oldValue);
 
-  if(isValueChanged){
+  if (isValueChanged) {
     item.history.unshift({
       oldValue,
       newValue: data.value,
@@ -303,7 +315,7 @@ async function exportRules() {
   await ensureDefaultRules();
   const rules = await BusinessRule.find({}).sort({ ruleCode: 1 }).lean();
   const header = ['ruleCode', 'name', 'category', 'value', 'defaultValue', 'unit', 'isActive'];
-  const esc = (v) => `"${String(typeof v === 'object' ? JSON.stringify(v) : v ?? '').replace(/"/g, '""')}"`;
+  const esc = (v) => `"${String(typeof v === 'object' ? JSON.stringify(v) : (v ?? '')).replace(/"/g, '""')}"`;
   const rows = rules.map((r) => header.map((h) => esc(r[h])).join(','));
   return '\uFEFF' + [header.join(','), ...rows].join('\n'); // BOM để Excel đọc đúng tiếng Việt
 }

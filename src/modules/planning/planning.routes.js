@@ -12,6 +12,7 @@ const {
   listQuerySchema,
   idParamsSchema,
   sessionParamsSchema,
+  submitQuizSchema,
 } = require('./planning.validation');
 const ctrl = require('./planning.controller');
 
@@ -23,16 +24,36 @@ router.use(authenticate, authorize(ROLES.STUDENT));
 router.post('/goals', validate(goalSchema), ctrl.createGoalCtrl);
 router.get('/goals', validate(listQuerySchema, 'query'), ctrl.listGoalsCtrl);
 router.get('/goals/:id', validate(idParamsSchema, 'params'), ctrl.getGoalCtrl);
-router.patch('/goals/:id', validate(idParamsSchema, 'params'), validate(updateGoalSchema), ctrl.updateGoalCtrl);
+router.patch(
+  '/goals/:id',
+  validate(idParamsSchema, 'params'),
+  validate(updateGoalSchema),
+  ctrl.updateGoalCtrl,
+);
 router.delete('/goals/:id', validate(idParamsSchema, 'params'), ctrl.removeGoalCtrl);
-
 
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', validate(createSchema), ctrl.createCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
 router.patch('/:id/confirm', validate(idParamsSchema, 'params'), ctrl.confirmCtrl);
-router.post('/:id/sessions', validate(idParamsSchema, 'params'), validate(sessionSchema), ctrl.addSessionCtrl);
-router.patch('/:id/sessions/:sessionId', validate(sessionParamsSchema, 'params'), validate(updateSessionSchema), ctrl.updateSessionCtrl);
+router.post(
+  '/:id/sessions',
+  validate(idParamsSchema, 'params'),
+  validate(sessionSchema),
+  ctrl.addSessionCtrl,
+);
+router.patch(
+  '/:id/sessions/:sessionId',
+  validate(sessionParamsSchema, 'params'),
+  validate(updateSessionSchema),
+  ctrl.updateSessionCtrl,
+);
+router.post(
+  '/:id/sessions/:sessionId/quiz',
+  validate(sessionParamsSchema, 'params'),
+  validate(submitQuizSchema),
+  ctrl.submitSessionQuizCtrl,
+);
 router.delete('/:id/sessions/:sessionId', validate(sessionParamsSchema, 'params'), ctrl.removeSessionCtrl);
 
 router.delete('/:id', validate(idParamsSchema, 'params'), ctrl.removeCtrl);

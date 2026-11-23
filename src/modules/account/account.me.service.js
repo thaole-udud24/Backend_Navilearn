@@ -103,7 +103,9 @@ async function deleteAccount(userId, { password }) {
   // BR-30: an ADMIN account is removed by another ADMIN, never by itself.
   if (user.role !== ROLES.STUDENT) throw ApiError.forbidden('Chỉ sinh viên mới được tự xóa tài khoản');
   if (!(await bcrypt.compare(password, user.passwordHash))) {
-    throw ApiError.badRequest('Mật khẩu không đúng', 'WRONG_PASSWORD', [{ field: 'password', message: 'Mật khẩu không đúng' }]);
+    throw ApiError.badRequest('Mật khẩu không đúng', 'WRONG_PASSWORD', [
+      { field: 'password', message: 'Mật khẩu không đúng' },
+    ]);
   }
   await purgeUserData(user.id);
   await user.deleteOne();

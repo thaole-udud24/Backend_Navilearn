@@ -9,7 +9,8 @@ const schema = z.object({
   JWT_REFRESH_SECRET: z.string().min(8, 'JWT_REFRESH_SECRET is required'),
   JWT_ACCESS_EXPIRES: z.string().default('15m'),
   JWT_REFRESH_EXPIRES: z.string().default('7d'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  // shortcut: hardcoded dev origins (localhost + 127.0.0.1), set CORS_ORIGIN in .env for prod.
+  CORS_ORIGIN: z.string().default('http://localhost:5173,http://127.0.0.1:5173'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),
   FRONTEND_URL: z.string().default('http://localhost:5173'),

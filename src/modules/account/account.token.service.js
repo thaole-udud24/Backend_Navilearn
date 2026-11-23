@@ -16,7 +16,11 @@ async function issueOtp(user, type, { enforceCooldown = true } = {}) {
   if (enforceCooldown) {
     const last = await Token.findOne({ user: user.id, type }).sort({ createdAt: -1 });
     if (last && Date.now() - last.createdAt.getTime() < env.OTP_RESEND_SECONDS * 1000) {
-      throw new ApiError(429, `Vui lòng đợi ${env.OTP_RESEND_SECONDS} giây trước khi yêu cầu mã mới`, 'OTP_COOLDOWN');
+      throw new ApiError(
+        429,
+        `Vui lòng đợi ${env.OTP_RESEND_SECONDS} giây trước khi yêu cầu mã mới`,
+        'OTP_COOLDOWN',
+      );
     }
   }
   await Token.deleteMany({ user: user.id, type });
@@ -62,7 +66,8 @@ async function issueResetTicket(user, minutes = RESET_TICKET_MINUTES) {
 
 /** Finds and consumes a reset ticket; returns the owning userId. */
 async function consumeResetTicket(plain) {
-  const invalid = () => ApiError.badRequest('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn', 'RESET_TOKEN_INVALID');
+  const invalid = () =>
+    ApiError.badRequest('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn', 'RESET_TOKEN_INVALID');
   const token = await Token.findOne({ type: TOKEN_TYPES.RESET_TICKET, tokenHash: sha256(plain) });
   if (!token || token.expiresAt.getTime() <= Date.now()) throw invalid();
   await token.deleteOne();

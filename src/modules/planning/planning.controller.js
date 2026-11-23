@@ -42,6 +42,16 @@ const removeSessionCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
+const submitSessionQuizCtrl = asyncHandler(async (req, res) => {
+  const result = await service.submitSessionQuiz(
+    req.params.id,
+    req.params.sessionId,
+    req.user,
+    req.body.answers,
+  );
+  return ok(res, result, 'Quiz graded');
+});
+
 const createGoalCtrl = asyncHandler(async (req, res) => {
   const goal = await service.createGoal(req.user.id, req.body);
   return created(res, goal);
@@ -74,6 +84,7 @@ module.exports = {
   confirmCtrl,
   addSessionCtrl,
   updateSessionCtrl,
+  submitSessionQuizCtrl,
   removeSessionCtrl,
   removeCtrl,
   createGoalCtrl,

@@ -12,11 +12,15 @@ const msFromExpires = (expires) => {
 };
 
 function signAccess(user, sid) {
-  return jwt.sign({ sub: user.id, role: user.role, sid }, env.JWT_ACCESS_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRES });
+  return jwt.sign({ sub: user.id, role: user.role, sid }, env.JWT_ACCESS_SECRET, {
+    expiresIn: env.JWT_ACCESS_EXPIRES,
+  });
 }
 
 function signRefresh(user, sid) {
-  return jwt.sign({ sub: user.id, role: user.role, sid }, env.JWT_REFRESH_SECRET, { expiresIn: env.JWT_REFRESH_EXPIRES });
+  return jwt.sign({ sub: user.id, role: user.role, sid }, env.JWT_REFRESH_SECRET, {
+    expiresIn: env.JWT_REFRESH_EXPIRES,
+  });
 }
 
 /** Creates a session (one per login/device) and returns its token pair. */

@@ -16,6 +16,7 @@ const monitoringRoutes = require('../modules/monitoring/monitoring.routes');
 const masteryRoutes = require('../modules/mastery/mastery.routes');
 const notificationRoutes = require('../modules/notification/notification.routes');
 const planningRoutes = require('../modules/planning/planning.routes');
+const planTemplateRoutes = require('../modules/plan-template/plan-template.routes');
 const questionBankRoutes = require('../modules/question-bank/question-bank.routes');
 const rbacRoutes = require('../modules/account/account.rbac.routes');
 const reviewRoutes = require('../modules/review/review.routes');
@@ -26,7 +27,9 @@ const supportRoutes = require('../modules/support/support.routes');
 
 const router = express.Router();
 
-router.get('/health', (req, res) => res.status(200).json({ success: true, data: { status: 'ok' }, message: 'OK' }));
+router.get('/health', (req, res) =>
+  res.status(200).json({ success: true, data: { status: 'ok' }, message: 'OK' }),
+);
 
 router.use('/auth', authRoutes);
 // TEMPLATE module mounted for demo; real modules register their router here the same way.
@@ -46,6 +49,7 @@ router.use('/monitoring-items', monitoringRoutes);
 router.use('/mastery-items', masteryRoutes);
 router.use('/notification-items', notificationRoutes);
 router.use('/planning-items', planningRoutes);
+router.use('/plan-template-items', planTemplateRoutes);
 router.use('/question-bank-items', questionBankRoutes);
 router.use('/rbac-items', rbacRoutes);
 router.use('/review-items', reviewRoutes);

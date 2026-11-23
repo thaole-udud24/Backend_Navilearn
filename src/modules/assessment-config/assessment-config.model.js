@@ -28,6 +28,7 @@ const assessmentConfigSchema = new mongoose.Schema(
       default: 'after_submit',
     },
     status: { type: String, enum: ['active', 'archived'], default: 'active' },
+    source: { type: String, enum: ['manual', 'ai', 'import'], default: 'manual' },
   },
   { timestamps: true },
 );

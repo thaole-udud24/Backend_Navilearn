@@ -59,12 +59,21 @@ async function list(query) {
 
 async function exportCsv(query, actor) {
   const items = await User.find(buildFilter(query)).sort({ createdAt: -1 }).limit(EXPORT_LIMIT);
-  await audit.record({ actorId: actor.id, action: 'user.export', targetType: 'user', meta: { count: items.length, query }, ip: actor.ip });
+  await audit.record({
+    actorId: actor.id,
+    action: 'user.export',
+    targetType: 'user',
+    meta: { count: items.length, query },
+    ip: actor.ip,
+  });
   return toCsv(items.map(toAdminUser), [
     { header: 'Họ tên', value: (u) => u.fullName },
     { header: 'Email', value: (u) => u.email },
     { header: 'Vai trò', value: (u) => u.role },
-    { header: 'Trạng thái', value: (u) => (!u.isActive ? 'Đã khóa' : u.emailVerified ? 'Hoạt động' : 'Chưa xác minh') },
+    {
+      header: 'Trạng thái',
+      value: (u) => (!u.isActive ? 'Đã khóa' : u.emailVerified ? 'Hoạt động' : 'Chưa xác minh'),
+    },
     { header: 'Lý do khóa', value: (u) => u.lockReason || '' },
     { header: 'Đăng nhập gần nhất', value: (u) => (u.lastLoginAt ? u.lastLoginAt.toISOString() : '') },
     { header: 'Ngày tạo', value: (u) => u.createdAt.toISOString() },
@@ -86,7 +95,14 @@ async function create(actor, { email, fullName, role, password }) {
     passwordHash: await bcrypt.hash(password, 10),
     emailVerified: true,
   });
-  await audit.record({ actorId: actor.id, action: 'user.create', targetType: 'user', targetId: user.id, meta: { email, role }, ip: actor.ip });
+  await audit.record({
+    actorId: actor.id,
+    action: 'user.create',
+    targetType: 'user',
+    targetId: user.id,
+    meta: { email, role },
+    ip: actor.ip,
+  });
   return toAdminUser(user);
 }
 
@@ -126,14 +142,22 @@ async function update(actor, id, data) {
 /** BIZ-ACC-10: blocks sign-in but keeps all data. */
 async function lock(actor, id, { reason }) {
   const user = await loadUser(id);
-  if (user.id === actor.id) throw ApiError.badRequest('Bạn không thể tự khóa tài khoản của mình', 'CANNOT_LOCK_SELF');
+  if (user.id === actor.id)
+    throw ApiError.badRequest('Bạn không thể tự khóa tài khoản của mình', 'CANNOT_LOCK_SELF');
   await assertNotLastAdmin(user);
   user.isActive = false;
   user.lockReason = reason;
   user.lockedAt = new Date();
   await user.save();
   await revokeAllSessions(user.id);
-  await audit.record({ actorId: actor.id, action: 'user.lock', targetType: 'user', targetId: user.id, meta: { reason }, ip: actor.ip });
+  await audit.record({
+    actorId: actor.id,
+    action: 'user.lock',
+    targetType: 'user',
+    targetId: user.id,
+    meta: { reason },
+    ip: actor.ip,
+  });
   return toAdminUser(user);
 }
 
@@ -146,14 +170,21 @@ async function unlock(actor, id) {
   user.failedAttempts = 0;
   user.lockUntil = null;
   await user.save();
-  await audit.record({ actorId: actor.id, action: 'user.unlock', targetType: 'user', targetId: user.id, ip: actor.ip });
+  await audit.record({
+    actorId: actor.id,
+    action: 'user.unlock',
+    targetType: 'user',
+    targetId: user.id,
+    ip: actor.ip,
+  });
   return toAdminUser(user);
 }
 
 /** BIZ-ACC-12 / BR-26: permanent. For students all their learning data goes with the account. */
 async function remove(actor, id) {
   const user = await loadUser(id);
-  if (user.id === actor.id) throw ApiError.badRequest('Bạn không thể tự xóa tài khoản của mình', 'CANNOT_DELETE_SELF');
+  if (user.id === actor.id)
+    throw ApiError.badRequest('Bạn không thể tự xóa tài khoản của mình', 'CANNOT_DELETE_SELF');
   await assertNotLastAdmin(user);
   // An ADMIN's records (question bank, concepts...) are shared content and must survive; only students own personal data.
   const purged = user.role === ROLES.STUDENT ? await purgeUserData(user.id) : {};
@@ -197,7 +228,13 @@ async function sendResetLink(actor, id) {
   if (!user.isActive) throw ApiError.conflict('Tài khoản đang bị khóa', 'ACCOUNT_LOCKED');
   const ticket = await tokens.issueResetTicket(user, RESET_LINK_MINUTES);
   await tokens.sendResetLinkMail(user, ticket, RESET_LINK_MINUTES);
-  await audit.record({ actorId: actor.id, action: 'user.send-reset', targetType: 'user', targetId: user.id, ip: actor.ip });
+  await audit.record({
+    actorId: actor.id,
+    action: 'user.send-reset',
+    targetType: 'user',
+    targetId: user.id,
+    ip: actor.ip,
+  });
   return { sent: true };
 }
 
@@ -223,4 +260,16 @@ async function auditLogs(query) {
   };
 }
 
-module.exports = { list, exportCsv, getById, create, update, lock, unlock, remove, loginLogs, sendResetLink, auditLogs };
+module.exports = {
+  list,
+  exportCsv,
+  getById,
+  create,
+  update,
+  lock,
+  unlock,
+  remove,
+  loginLogs,
+  sendResetLink,
+  auditLogs,
+};

@@ -76,7 +76,9 @@ describe('admin DTO (BR-02)', () => {
 
 describe('auth routes validation (no database needed)', () => {
   it('POST /auth/register rejects a short password with 400', async () => {
-    const res = await request(app).post('/api/v1/auth/register').send({ email: 'a@b.co', password: 'short', fullName: 'A' });
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ email: 'a@b.co', password: 'short', fullName: 'A' });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
@@ -87,13 +89,16 @@ describe('auth routes validation (no database needed)', () => {
   });
 
   it('POST /auth/reset-password requires a reset token', async () => {
-    const res = await request(app).post('/api/v1/auth/reset-password').send({ password: 'a long enough passphrase' });
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ password: 'a long enough passphrase' });
     expect(res.status).toBe(400);
   });
 });
 
 describe('access control', () => {
-  const tokenFor = (role) => jwt.sign({ sub: '64b000000000000000000001', role, sid: 'x' }, process.env.JWT_ACCESS_SECRET);
+  const tokenFor = (role) =>
+    jwt.sign({ sub: '64b000000000000000000001', role, sid: 'x' }, process.env.JWT_ACCESS_SECRET);
 
   it('GET /me/profile without a token returns 401', async () => {
     const res = await request(app).get('/api/v1/me/profile');
@@ -106,7 +111,9 @@ describe('access control', () => {
   });
 
   it('GET /admin/users returns 403 for a student', async () => {
-    const res = await request(app).get('/api/v1/admin/users').set('Authorization', `Bearer ${tokenFor('student')}`);
+    const res = await request(app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', `Bearer ${tokenFor('student')}`);
     expect(res.status).toBe(403);
   });
 

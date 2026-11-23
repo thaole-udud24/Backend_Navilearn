@@ -38,4 +38,12 @@ const exportReportCtrl = asyncHandler(async (req, res) => {
   return ok(res, report);
 });
 
-module.exports = { listCtrl, getCtrl, getTrendCtrl, setGoalCtrl, markContentCompleteCtrl, exportReportCtrl, openContentCtrl };
+module.exports = {
+  listCtrl,
+  getCtrl,
+  getTrendCtrl,
+  setGoalCtrl,
+  markContentCompleteCtrl,
+  exportReportCtrl,
+  openContentCtrl,
+};

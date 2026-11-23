@@ -14,6 +14,7 @@ const {
   updateRubricSchema,
   updateRubricStatusSchema,
   listRubricsQuerySchema,
+  importSchema,
 } = require('./assessment-config.validation');
 const ctrl = require('./assessment-config.controller');
 
@@ -22,6 +23,8 @@ const router = express.Router();
 router.use(authenticate);
 
 // Rubric sub-resource (UC-ACF-07..10) — literal path, must come before '/:id'.
+router.get('/rubrics/export', authorize(ROLES.ADMIN), ctrl.exportRubricsCtrl);
+router.post('/rubrics/import', authorize(ROLES.ADMIN), validate(importSchema), ctrl.importRubricsCtrl);
 router.get('/rubrics', validate(listRubricsQuerySchema, 'query'), ctrl.listRubricsCtrl);
 router.post('/rubrics', authorize(ROLES.ADMIN), validate(createRubricSchema), ctrl.createRubricCtrl);
 router.get('/rubrics/:id', validate(idParamsSchema, 'params'), ctrl.getRubricCtrl);
@@ -40,6 +43,8 @@ router.patch(
   ctrl.updateRubricStatusCtrl,
 );
 
+router.get('/export', authorize(ROLES.ADMIN), ctrl.exportCtrl);
+router.post('/import', authorize(ROLES.ADMIN), validate(importSchema), ctrl.importCtrl);
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', authorize(ROLES.ADMIN), validate(createSchema), ctrl.createCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);

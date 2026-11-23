@@ -42,4 +42,11 @@ const auditQuerySchema = z.object({
   action: z.string().trim().max(60).optional(),
 });
 
-module.exports = { listQuerySchema, idParamsSchema, createUserSchema, updateUserSchema, lockSchema, auditQuerySchema };
+module.exports = {
+  listQuerySchema,
+  idParamsSchema,
+  createUserSchema,
+  updateUserSchema,
+  lockSchema,
+  auditQuerySchema,
+};

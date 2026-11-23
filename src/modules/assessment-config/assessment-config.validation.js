@@ -9,6 +9,7 @@ const createSchema = z.object({
   passScore: z.number().int().min(0).max(100).optional(),
   timeLimitMinutes: z.number().int().min(0).optional(),
   kind: z.enum(KINDS).optional(),
+  source: z.enum(['manual', 'ai', 'import']).optional(),
 });
 
 const updateSchema = z
@@ -55,6 +56,7 @@ const createRubricSchema = z.object({
   title: z.string().min(1).max(200),
   concept: z.string().min(1),
   criteria: z.array(criterionSchema).min(1, 'A rubric needs at least 1 criterion'),
+  source: z.enum(['manual', 'ai', 'import']).optional(),
 });
 
 const updateRubricSchema = z
@@ -73,6 +75,10 @@ const listRubricsQuerySchema = z.object({
   status: z.enum(['active', 'archived']).optional(),
 });
 
+const importSchema = z.object({
+  items: z.array(z.record(z.unknown())).min(1).max(500),
+});
+
 module.exports = {
   createSchema,
   updateSchema,
@@ -84,4 +90,5 @@ module.exports = {
   updateRubricSchema,
   updateRubricStatusSchema,
   listRubricsQuerySchema,
+  importSchema,
 };

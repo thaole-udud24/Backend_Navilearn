@@ -53,7 +53,9 @@ const REASONS = {
 // BR-12: every recommendation carries a reason = the factor that contributes most to the score.
 function explain(a, w = WEIGHTS) {
   const contributions = weightedContributions(a, w);
-  const top = Object.keys(contributions).reduce((best, k) => (contributions[k] > contributions[best] ? k : best));
+  const top = Object.keys(contributions).reduce((best, k) =>
+    contributions[k] > contributions[best] ? k : best,
+  );
   return REASONS[top](a);
 }
 

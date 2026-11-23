@@ -24,7 +24,10 @@ function getTransporter() {
 async function sendMail({ to, subject, text }) {
   const tx = getTransporter();
   if (!tx) {
-    logger.info(env.NODE_ENV === 'production' ? { to, subject } : { to, subject, text }, 'sendMail (no SMTP, logged only)');
+    logger.info(
+      env.NODE_ENV === 'production' ? { to, subject } : { to, subject, text },
+      'sendMail (no SMTP, logged only)',
+    );
     return { queued: false };
   }
   await tx.sendMail({ from: env.MAIL_FROM, to, subject, text });

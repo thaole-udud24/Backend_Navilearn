@@ -10,7 +10,15 @@ const updateProfileSchema = z
     timezone: z.string().trim().min(1).max(64),
     learningGoal: z.string().trim().max(500),
     availability: z
-      .object({ mon: minutes, tue: minutes, wed: minutes, thu: minutes, fri: minutes, sat: minutes, sun: minutes })
+      .object({
+        mon: minutes,
+        tue: minutes,
+        wed: minutes,
+        thu: minutes,
+        fri: minutes,
+        sat: minutes,
+        sun: minutes,
+      })
       .partial(),
   })
   .partial();

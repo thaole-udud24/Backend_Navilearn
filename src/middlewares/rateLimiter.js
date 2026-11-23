@@ -6,7 +6,12 @@ const authLimiter = rateLimit({
   max: env.RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'Too many requests, please try again later', code: 'RATE_LIMITED', errors: [] },
+  message: {
+    success: false,
+    message: 'Too many requests, please try again later',
+    code: 'RATE_LIMITED',
+    errors: [],
+  },
 });
 
 module.exports = { authLimiter };

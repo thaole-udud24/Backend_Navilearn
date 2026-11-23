@@ -2,6 +2,9 @@ const ApiError = require('../../utils/ApiError');
 const { parsePagination, buildMeta } = require('../../utils/pagination');
 const PlanningItem = require('./planning.model');
 const PlanningGoal = require('./planning.goal.model');
+const QuestionItem = require('../question-bank/question-bank.model');
+
+const QUIZ_PASS_SCORE = 70;
 async function create(ownerId, data) {
   return PlanningItem.create({ owner: ownerId, createdBy: ownerId, ...data });
 }
@@ -30,7 +33,8 @@ async function confirm(id, requester) {
   item.status = 'active';
   item.updatedBy = requester.id;
   await item.save();
-  if (item.replaces) await PlanningItem.updateOne({ _id: item.replaces, owner: item.owner }, { status: 'superseded' });
+  if (item.replaces)
+    await PlanningItem.updateOne({ _id: item.replaces, owner: item.owner }, { status: 'superseded' });
   return item;
 }
 
@@ -71,15 +75,51 @@ async function updateSession(id, sessionId, requester, data) {
   const { status, note, ...timing } = data;
   const reschedules = Object.keys(timing).length > 0;
   // UC-PLN-05/06/07: only a scheduled session can be moved, cancelled or completed.
-  if ((reschedules || status) && session.status !== 'planned') throw ApiError.conflict('Session is not scheduled');
+  if ((reschedules || status) && session.status !== 'planned')
+    throw ApiError.conflict('Session is not scheduled');
   // UC-PLN-04: notes are for sessions that are done (or being completed in this same request).
-  if (note !== undefined && (status || session.status) !== 'done') throw ApiError.conflict('Session is not done');
-  if (reschedules) assertNoOverlap(item, { startAt: session.startAt, durationMin: session.durationMin, ...timing }, sessionId);
+  if (note !== undefined && (status || session.status) !== 'done')
+    throw ApiError.conflict('Session is not done');
+  // UC-PLN-TPL-03: a session with an attached quiz can't be completed until it's passed.
+  if (status === 'done' && (session.questions?.length ?? 0) > 0 && !session.quizPassed) {
+    throw ApiError.conflict('Complete the attached quiz before marking this session done');
+  }
+  if (reschedules)
+    assertNoOverlap(
+      item,
+      { startAt: session.startAt, durationMin: session.durationMin, ...timing },
+      sessionId,
+    );
 
   Object.assign(session, data);
   item.updatedBy = requester.id;
   await item.save();
   return item;
+}
+
+// UC-PLN-TPL-03: grades the session's attached quiz with a simple pass/fail threshold; passing
+// unlocks "done" for that session (see updateSession above).
+async function submitSessionQuiz(id, sessionId, requester, answers) {
+  const item = await getActive(id, requester);
+  const session = item.sessions.find((s) => String(s._id) === sessionId);
+  if (!session) throw ApiError.notFound('Session not found');
+  if (!session.questions?.length) throw ApiError.conflict('This session has no quiz attached');
+
+  const questions = await QuestionItem.find({ _id: { $in: session.questions } });
+  const correctCount = answers.reduce((count, { questionId, selectedOptionIndex }) => {
+    const question = questions.find((q) => String(q._id) === questionId);
+    return question?.options?.[selectedOptionIndex]?.isCorrect ? count + 1 : count;
+  }, 0);
+  const totalCount = questions.length;
+  const scorePercent = totalCount ? Math.round((correctCount / totalCount) * 100) : 0;
+  const passed = scorePercent >= QUIZ_PASS_SCORE;
+
+  if (passed && !session.quizPassed) {
+    session.quizPassed = true;
+    item.updatedBy = requester.id;
+    await item.save();
+  }
+  return { scorePercent, passed, correctCount, totalCount };
 }
 
 async function removeSession(id, sessionId, requester) {
@@ -135,6 +175,7 @@ module.exports = {
   confirm,
   addSession,
   updateSession,
+  submitSessionQuiz,
   removeSession,
   remove,
   createGoal,

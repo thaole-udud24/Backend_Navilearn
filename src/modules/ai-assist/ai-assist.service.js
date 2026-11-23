@@ -8,6 +8,7 @@ const AssessmentItem = require('../assessment/assessment.model');
 const QuestionItem = require('../question-bank/question-bank.model');
 const assessmentConfigService = require('../assessment-config/assessment-config.service');
 const masteryService = require('../mastery/mastery.service');
+const planningService = require('../planning/planning.service');
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
@@ -199,6 +200,178 @@ async function explainWrong(ownerId, { assessmentItemId, question: questionId })
   return { explanation };
 }
 
+const CONCEPT_NAME_LINE = /^NAME:\s*(.+)$/i;
+const CONCEPT_DESCRIPTION_LINE = /^DESCRIPTION:\s*(.+)$/i;
+
+// UC-KNW-AI-01: admin asks AI to draft a new knowledge-map concept; admin still reviews and
+// creates it for real via knowledge.service — this only proposes, never writes to Concept.
+async function generateConceptDraft(ownerId, { topic }) {
+  const prompt =
+    `Đề xuất một khái niệm/chủ đề kiến thức mới liên quan tới: "${topic}".\n` +
+    'Trả lời CHÍNH XÁC theo định dạng này, không thêm chữ nào khác:\n' +
+    'NAME: <tên khái niệm, ngắn gọn>\n' +
+    'DESCRIPTION: <mô tả ngắn 1-2 câu>';
+
+  const { answer } = await ai.ask(prompt);
+  const lines = String(answer || '')
+    .split('\n')
+    .map((l) => l.trim());
+  const name =
+    lines
+      .find((l) => CONCEPT_NAME_LINE.test(l))
+      ?.match(CONCEPT_NAME_LINE)?.[1]
+      ?.trim() ?? '';
+  const description =
+    lines
+      .find((l) => CONCEPT_DESCRIPTION_LINE.test(l))
+      ?.match(CONCEPT_DESCRIPTION_LINE)?.[1]
+      ?.trim() ?? '';
+  const valid = Boolean(name);
+
+  const log = await AiAssistItem.create({
+    owner: ownerId,
+    kind: 'generate_concept',
+    prompt,
+    response: answer,
+    valid,
+  });
+
+  // shortcut: falls back to the raw topic as the name when AI misses the format, so the admin
+  // always has something reviewable instead of an empty draft.
+  return { aiAssistLogId: log.id, topic, valid, name: name || topic, description };
+}
+
+const TEMPLATE_STEP_LINE =
+  /^DAY:\s*(\d+)\s*\|\s*DURATION:\s*(\d+)\s*\|\s*THEORY:\s*(.*?)\s*\|\s*NOTE:\s*(.+)$/i;
+
+function parseGeneratedTemplateSteps(raw) {
+  return String(raw || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .map((l) => l.match(TEMPLATE_STEP_LINE))
+    .filter(Boolean)
+    .map((m) => ({
+      dayOffset: Math.min(60, Math.max(1, Number(m[1]))),
+      durationMin: Math.min(180, Math.max(15, Number(m[2]))),
+      theoryContent: m[3].trim().slice(0, 4000),
+      note: m[4].trim().slice(0, 300),
+    }));
+}
+
+// UC-PLN-TPL-04: admin asks AI to draft a whole plan-template (title + steps with theory) instead
+// of typing every step by hand; admin still reviews/edits before saving (same review-then-create
+// pattern as generateConceptDraft/generateQuestion — this only proposes, never writes the template).
+async function generateTemplateDraft(ownerId, { topic, conceptId, sessionCount = 4 }) {
+  const concept = conceptId ? await Concept.findById(conceptId) : null;
+  const subject = concept ? concept.name : topic;
+
+  const prompt =
+    `Thiết kế một lộ trình ôn tập gồm đúng ${sessionCount} buổi cho chủ đề: "${subject}".\n` +
+    'Trả lời CHÍNH XÁC theo định dạng này, mỗi buổi một dòng, không thêm chữ nào khác:\n' +
+    'DAY: <số ngày kể từ lúc bắt đầu, 1-60> | DURATION: <phút, 15-120> | THEORY: <tóm tắt lý thuyết ngắn 1-2 câu> | NOTE: <hoạt động ngắn bằng tiếng Việt>';
+
+  const { answer } = await ai.ask(prompt);
+  let steps = parseGeneratedTemplateSteps(answer);
+  const valid = steps.length > 0;
+
+  // shortcut: AI trả sai định dạng -> lộ trình dự phòng chia đều buổi học, để luồng không bị kẹt.
+  if (!valid) {
+    steps = Array.from({ length: sessionCount }, (_, i) => ({
+      dayOffset: (i + 1) * 2,
+      durationMin: 30,
+      theoryContent: '',
+      note: `Ôn tập ${subject}`,
+    }));
+  }
+
+  const log = await AiAssistItem.create({
+    owner: ownerId,
+    concept: conceptId ?? null,
+    kind: 'generate_template',
+    prompt,
+    response: answer,
+    valid,
+  });
+
+  return {
+    aiAssistLogId: log.id,
+    valid,
+    title: `Lộ trình ${subject}`,
+    description: `Lộ trình do AI đề xuất cho chủ đề "${subject}".`,
+    steps,
+  };
+}
+
+const PLAN_SESSION_LINE = /^DAY:\s*(\d+)\s*\|\s*DURATION:\s*(\d+)\s*\|\s*NOTE:\s*(.+)$/i;
+
+function parseGeneratedSessions(raw) {
+  return String(raw || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .map((l) => l.match(PLAN_SESSION_LINE))
+    .filter(Boolean)
+    .map((m) => ({
+      dayOffset: Math.min(60, Math.max(1, Number(m[1]))),
+      durationMin: Math.min(180, Math.max(15, Number(m[2]))),
+      note: m[3].trim().slice(0, 300),
+    }));
+}
+
+// UC-PLN-AI-01: student turns a goal into a concrete proposed study plan (BR-12 personalization);
+// the student still confirms it (BR-37/BR-54) before it becomes active, same as an ADP replan.
+async function generateStudyPlan(ownerId, goalId) {
+  const goal = await planningService.getOwnedGoal(goalId, { id: ownerId });
+  const concept = await Concept.findById(goal.concept);
+  if (!concept) throw ApiError.badRequest('Concept not found', 'CONCEPT_NOT_FOUND');
+
+  const daysLeft = Math.max(1, Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / 86400000));
+  const sessionCount = Math.min(6, Math.max(2, Math.round(daysLeft / 3)));
+  const personalization = await buildPersonalizationContext(ownerId, goal.concept);
+
+  const prompt =
+    `Tạo lộ trình học gồm đúng ${sessionCount} buổi để đạt mục tiêu "${goal.title}" cho chủ đề "${concept.name}" trong ${daysLeft} ngày tới.\n` +
+    `${personalization}\n` +
+    'Trả lời CHÍNH XÁC theo định dạng này, mỗi buổi một dòng, không thêm chữ nào khác:\n' +
+    'DAY: <số ngày kể từ hôm nay, 1-60> | DURATION: <phút, 15-120> | NOTE: <hoạt động ngắn bằng tiếng Việt>';
+
+  const { answer } = await ai.ask(prompt);
+  let parsed = parseGeneratedSessions(answer);
+  const valid = parsed.length > 0;
+
+  // shortcut: AI trả sai định dạng -> chia đều buổi học còn lại, để luồng không bị kẹt.
+  if (!valid) {
+    parsed = Array.from({ length: sessionCount }, (_, i) => ({
+      dayOffset: Math.max(1, Math.round(((i + 1) * daysLeft) / sessionCount)),
+      durationMin: 30,
+      note: `Ôn tập ${concept.name}`,
+    }));
+  }
+
+  const sessions = parsed.map(({ dayOffset, durationMin, note }) => {
+    const startAt = new Date();
+    startAt.setDate(startAt.getDate() + dayOffset);
+    startAt.setHours(19, 0, 0, 0);
+    return { concept: goal.concept, startAt, durationMin, note };
+  });
+
+  const plan = await planningService.create(ownerId, {
+    title: `Lộ trình AI: ${goal.title}`,
+    status: 'proposed',
+    sessions,
+  });
+
+  await AiAssistItem.create({
+    owner: ownerId,
+    concept: goal.concept,
+    kind: 'generate_plan',
+    prompt,
+    response: answer,
+    valid,
+  });
+
+  return { plan, valid };
+}
+
 async function list(ownerId, query) {
   const { page, limit, skip } = parsePagination(query);
   const filter = { owner: ownerId, ...(query.kind ? { kind: query.kind } : {}) };
@@ -243,6 +416,7 @@ async function report(id, requesterId, { reason }) {
 
 module.exports = {
   validateGeneratedQuestionShape,
+  parseGeneratedSessions,
   buildPersonalizationContext,
   generateQuestion,
   practiceQuestion,
@@ -250,6 +424,10 @@ module.exports = {
   essayFeedback,
   askWithSource,
   explainWrong,
+  generateStudyPlan,
+  generateConceptDraft,
+  generateTemplateDraft,
+  parseGeneratedTemplateSteps,
   list,
   getOwned,
   removeOwned,

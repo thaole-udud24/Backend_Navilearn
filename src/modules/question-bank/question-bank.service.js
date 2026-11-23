@@ -118,7 +118,7 @@ async function importBulk(ownerId, rows) {
     }
     try {
       // eslint-disable-next-line no-await-in-loop
-      const item = await create(ownerId, parsed.data);
+      const item = await create(ownerId, { ...parsed.data, source: 'import' });
       created.push(item.id);
     } catch (err) {
       errors.push({ row: i, message: err.message });
@@ -151,6 +151,7 @@ async function approveFromAiDraft(ownerId, { aiAssistLogId, concept, text, optio
     text: text ?? log.response,
     options,
     difficulty,
+    source: 'ai',
   });
   if (points) {
     item.points = points;

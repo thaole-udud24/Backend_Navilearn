@@ -51,7 +51,11 @@ describe('assessment-config module', () => {
   });
 });
 
-jest.mock('./assessment-config.model', () => ({ find: jest.fn(), countDocuments: jest.fn(), create: jest.fn() }));
+jest.mock('./assessment-config.model', () => ({
+  find: jest.fn(),
+  countDocuments: jest.fn(),
+  create: jest.fn(),
+}));
 jest.mock('./rubric.model', () => ({ find: jest.fn(), countDocuments: jest.fn() }));
 jest.mock('../knowledge/knowledge.model', () => ({ findById: jest.fn() }));
 jest.mock('../question-bank/question-bank.model', () => ({ find: jest.fn() }));

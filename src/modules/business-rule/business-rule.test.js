@@ -59,20 +59,22 @@ describe('business-rule module', () => {
   });
 
   it('rejects BR-15 out of range', () => {
-  expect(() => assertValidValue('BR-15', 1.5)).toThrow();
-});
+    expect(() => assertValidValue('BR-15', 1.5)).toThrow();
+  });
   it('accepts BR-15 = 0.7', () => {
     expect(() => assertValidValue('BR-15', 0.7)).not.toThrow();
   });
 
   it('rejects NBA weights not summing to 1', () => {
-    expect(() => assertValidValue('BR-12-NBA-WEIGHTS', { urgency: 0.5, weakness: 0.5, prerequisite: 0.5 })).toThrow();
+    expect(() =>
+      assertValidValue('BR-12-NBA-WEIGHTS', { urgency: 0.5, weakness: 0.5, prerequisite: 0.5 }),
+    ).toThrow();
   });
 
   it('rejects non-increasing review intervals', () => {
     expect(() => assertValidValue('BR-16-INTERVALS', [1, 7, 3])).toThrow();
   });
-  
+
   it('rejects malformed id', () => {
     expect(idParamsSchema.safeParse({ id: 'abc' }).success).toBe(false);
   });
@@ -90,4 +92,3 @@ describe('business-rule module', () => {
     expect(() => assertValidValue('BR-99-CUSTOM', 20, 10)).not.toThrow();
   });
 });
-

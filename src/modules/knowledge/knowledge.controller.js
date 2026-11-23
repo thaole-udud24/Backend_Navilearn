@@ -17,6 +17,11 @@ const getCtrl = asyncHandler(async (req, res) => {
   return ok(res, item);
 });
 
+const updateCtrl = asyncHandler(async (req, res) => {
+  const item = await service.update(req.params.id, req.user.id, req.body);
+  return ok(res, item, 'Concept updated');
+});
+
 const updateStatusCtrl = asyncHandler(async (req, res) => {
   const item = await service.updateStatus(req.params.id, req.user.id, req.body.status);
   return ok(res, item, 'Status updated');
@@ -27,4 +32,23 @@ const removeCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
-module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl };
+const importCtrl = asyncHandler(async (req, res) => {
+  const report = await service.importBulk(req.user.id, req.body.items);
+  return ok(res, report, 'Import finished');
+});
+
+const exportCtrl = asyncHandler(async (req, res) => {
+  const items = await service.exportAll();
+  return ok(res, items);
+});
+
+module.exports = {
+  createCtrl,
+  listCtrl,
+  getCtrl,
+  updateCtrl,
+  updateStatusCtrl,
+  removeCtrl,
+  importCtrl,
+  exportCtrl,
+};

@@ -67,6 +67,26 @@ const updateRubricStatusCtrl = asyncHandler(async (req, res) => {
   return ok(res, item, 'Rubric status updated');
 });
 
+const importCtrl = asyncHandler(async (req, res) => {
+  const report = await service.importBulk(req.user.id, req.body.items);
+  return ok(res, report, 'Import finished');
+});
+
+const exportCtrl = asyncHandler(async (req, res) => {
+  const items = await service.exportAll();
+  return ok(res, items);
+});
+
+const importRubricsCtrl = asyncHandler(async (req, res) => {
+  const report = await service.importBulkRubrics(req.user.id, req.body.items);
+  return ok(res, report, 'Import finished');
+});
+
+const exportRubricsCtrl = asyncHandler(async (req, res) => {
+  const items = await service.exportAllRubrics();
+  return ok(res, items);
+});
+
 module.exports = {
   createCtrl,
   listCtrl,
@@ -81,4 +101,8 @@ module.exports = {
   getRubricCtrl,
   updateRubricCtrl,
   updateRubricStatusCtrl,
+  importCtrl,
+  exportCtrl,
+  importRubricsCtrl,
+  exportRubricsCtrl,
 };

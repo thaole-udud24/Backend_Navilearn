@@ -26,6 +26,26 @@ describe('question-bank module', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a true_false question with exactly 2 options, 1 correct', () => {
+    const result = createSchema.safeParse({
+      concept: 'c1',
+      type: 'true_false',
+      text: 'Trái Đất hình tròn?',
+      options: [{ text: 'Đúng', isCorrect: true }, { text: 'Sai' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a true_false question with 3 options', () => {
+    const result = createSchema.safeParse({
+      concept: 'c1',
+      type: 'true_false',
+      text: 'Trái Đất hình tròn?',
+      options: [{ text: 'Đúng', isCorrect: true }, { text: 'Sai' }, { text: 'Không chắc' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('accepts an essay question without options', () => {
     const result = createSchema.safeParse({
       concept: 'c1',

@@ -91,7 +91,11 @@ async function login({ email, password }, ctx) {
 
   if (user.lockUntil && user.lockUntil.getTime() > Date.now()) {
     await logAttempt(user, email, false, 'temp_locked', ctx);
-    throw new ApiError(423, `Tài khoản tạm khóa, thử lại sau ${lockMinutesLeft(user)} phút`, 'ACCOUNT_TEMP_LOCKED');
+    throw new ApiError(
+      423,
+      `Tài khoản tạm khóa, thử lại sau ${lockMinutesLeft(user)} phút`,
+      'ACCOUNT_TEMP_LOCKED',
+    );
   }
 
   const match = await bcrypt.compare(password, user.passwordHash);
@@ -110,7 +114,11 @@ async function login({ email, password }, ctx) {
     await user.save();
     await logAttempt(user, email, false, nowLocked ? 'wrong_password_locked' : 'wrong_password', ctx);
     if (nowLocked) {
-      throw new ApiError(423, `Nhập sai quá ${env.LOGIN_MAX_ATTEMPTS} lần, tài khoản tạm khóa ${env.LOGIN_LOCK_MINUTES} phút`, 'ACCOUNT_TEMP_LOCKED');
+      throw new ApiError(
+        423,
+        `Nhập sai quá ${env.LOGIN_MAX_ATTEMPTS} lần, tài khoản tạm khóa ${env.LOGIN_LOCK_MINUTES} phút`,
+        'ACCOUNT_TEMP_LOCKED',
+      );
     }
     throw ApiError.unauthorized(GENERIC_LOGIN_ERROR);
   }
@@ -162,7 +170,11 @@ async function verifyResetOtp({ email, otp }) {
 async function resetPassword({ resetToken, password }) {
   const userId = await tokens.consumeResetTicket(resetToken);
   const user = await User.findById(userId);
-  if (!user) throw ApiError.badRequest('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn', 'RESET_TOKEN_INVALID');
+  if (!user)
+    throw ApiError.badRequest(
+      'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn',
+      'RESET_TOKEN_INVALID',
+    );
   assertPassword(password, { email: user.email, fullName: user.fullName });
 
   user.passwordHash = await bcrypt.hash(password, 10);

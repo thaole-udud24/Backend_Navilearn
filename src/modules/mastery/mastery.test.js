@@ -75,9 +75,15 @@ describe('nextLearningStateForAttempt (BR-39)', () => {
   });
 
   it('moves UNDERSTOOD to APPLIED only via an independent check scoring >=80', () => {
-    expect(nextLearningStateForAttempt('UNDERSTOOD', { score: 79, evidenceCount: 5, independentCheck: true })).toBe('UNDERSTOOD');
-    expect(nextLearningStateForAttempt('UNDERSTOOD', { score: 85, evidenceCount: 5, independentCheck: false })).toBe('UNDERSTOOD');
-    expect(nextLearningStateForAttempt('UNDERSTOOD', { score: 85, evidenceCount: 5, independentCheck: true })).toBe('APPLIED');
+    expect(
+      nextLearningStateForAttempt('UNDERSTOOD', { score: 79, evidenceCount: 5, independentCheck: true }),
+    ).toBe('UNDERSTOOD');
+    expect(
+      nextLearningStateForAttempt('UNDERSTOOD', { score: 85, evidenceCount: 5, independentCheck: false }),
+    ).toBe('UNDERSTOOD');
+    expect(
+      nextLearningStateForAttempt('UNDERSTOOD', { score: 85, evidenceCount: 5, independentCheck: true }),
+    ).toBe('APPLIED');
   });
 
   it('a new attempt moves DECAY_RISK back to PRACTICING ("ôn lại")', () => {

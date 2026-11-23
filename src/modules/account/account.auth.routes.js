@@ -14,7 +14,12 @@ router.post('/login', authLimiter, validate(schemas.loginSchema), ctrl.loginCtrl
 router.post('/refresh', authLimiter, validate(schemas.refreshSchema), ctrl.refreshCtrl);
 router.post('/logout', validate(schemas.refreshSchema), ctrl.logoutCtrl);
 router.post('/forgot-password', authLimiter, validate(schemas.forgotPasswordSchema), ctrl.forgotPasswordCtrl);
-router.post('/verify-reset-otp', authLimiter, validate(schemas.verifyResetOtpSchema), ctrl.verifyResetOtpCtrl);
+router.post(
+  '/verify-reset-otp',
+  authLimiter,
+  validate(schemas.verifyResetOtpSchema),
+  ctrl.verifyResetOtpCtrl,
+);
 router.post('/reset-password', authLimiter, validate(schemas.resetPasswordSchema), ctrl.resetPasswordCtrl);
 router.get('/me', authenticate, ctrl.meCtrl);
 

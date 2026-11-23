@@ -77,7 +77,13 @@ async function findRaw(ownerId, conceptId) {
 
 // Called by assessment.service right after an attempt is graded (initial_grading) or a question
 // changes and affected attempts are regraded (regrade). Always appends to history (UC-AP-MST-04).
-async function upsertForAttempt(ownerId, conceptId, attemptScorePercent, reason = 'initial_grading', { independentCheck = false } = {}) {
+async function upsertForAttempt(
+  ownerId,
+  conceptId,
+  attemptScorePercent,
+  reason = 'initial_grading',
+  { independentCheck = false } = {},
+) {
   const thresholds = await businessRuleService.getThresholds();
   let item = await MasteryItem.findOne({ owner: ownerId, concept: conceptId });
   const isCorrectAttempt = attemptScorePercent >= 50;

@@ -6,6 +6,8 @@ const sessionSchema = z.object({
   concept: objectId,
   startAt: z.coerce.date(),
   durationMin: z.number().int().min(5).max(480),
+  theoryContent: z.string().trim().max(8000).optional(),
+  questions: z.array(objectId).max(20).optional(),
 });
 
 const updateSessionSchema = sessionSchema
@@ -38,6 +40,14 @@ const listQuerySchema = z.object({
 const idParamsSchema = z.object({ id: objectId });
 
 const sessionParamsSchema = z.object({ id: objectId, sessionId: objectId });
+
+const submitQuizSchema = z.object({
+  answers: z
+    .array(z.object({ questionId: objectId, selectedOptionIndex: z.number().int().min(0).max(9) }))
+    .min(1)
+    .max(20),
+});
+
 module.exports = {
   createSchema,
   sessionSchema,
@@ -47,4 +57,5 @@ module.exports = {
   listQuerySchema,
   idParamsSchema,
   sessionParamsSchema,
+  submitQuizSchema,
 };

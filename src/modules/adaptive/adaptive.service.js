@@ -18,9 +18,18 @@ async function loadActivities(ownerId, now) {
     if (!byConcept.has(id)) byConcept.set(id, { id, name: c.name });
     return byConcept.get(id);
   };
-  masteries.filter((m) => m.concept).forEach((m) => { slot(m.concept).mastery = m; });
+  masteries
+    .filter((m) => m.concept)
+    .forEach((m) => {
+      slot(m.concept).mastery = m;
+    });
   // goals come sorted by deadline asc, so the nearest goal of a concept wins
-  goals.filter((g) => g.concept).forEach((g) => { const s = slot(g.concept); if (!s.goal) s.goal = g; });
+  goals
+    .filter((g) => g.concept)
+    .forEach((g) => {
+      const s = slot(g.concept);
+      if (!s.goal) s.goal = g;
+    });
 
   return [...byConcept.values()].map((c) => buildActivity(c, now));
 }
@@ -54,7 +63,8 @@ async function getActivePlan(ownerId, planId) {
 }
 
 const unfinished = (plan) => plan.sessions.filter((s) => s.status !== 'done' && s.status !== 'cancelled');
-const missedSessions = (plan, now) => unfinished(plan).filter((s) => s.status === 'missed' || s.startAt < now);
+const missedSessions = (plan, now) =>
+  unfinished(plan).filter((s) => s.status === 'missed' || s.startAt < now);
 
 // AP-ADP-02: does this plan need replanning? shortcut: only missed sessions are detected;
 // poor results and study-time changes need event data that does not exist yet.
@@ -73,7 +83,8 @@ async function replan(ownerId, planId, now = new Date()) {
   if (!missed.length) throw ApiError.conflict('No missed sessions to replan');
   const pending = unfinished(plan);
   const byId = new Map((await loadActivities(ownerId, now)).map((a) => [a.id, a]));
-  const priorityOf = (s) => computePriority(byId.get(String(s.concept)) || buildActivity({ id: String(s.concept) }, now));
+  const priorityOf = (s) =>
+    computePriority(byId.get(String(s.concept)) || buildActivity({ id: String(s.concept) }, now));
 
   const sessions = pending
     .map((s) => ({ s, p: priorityOf(s) }))

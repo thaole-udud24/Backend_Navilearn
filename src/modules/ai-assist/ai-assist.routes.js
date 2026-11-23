@@ -12,6 +12,9 @@ const {
   essayFeedbackSchema,
   rateSchema,
   reportSchema,
+  generatePlanSchema,
+  generateConceptSchema,
+  generateTemplateSchema,
 } = require('./ai-assist.validation');
 const ctrl = require('./ai-assist.controller');
 
@@ -25,6 +28,22 @@ router.post(
   authorize(ROLES.ADMIN),
   validate(generateQuestionSchema),
   ctrl.generateQuestionCtrl,
+);
+
+// UC-KNW-AI-01: admin-only draft generation for the knowledge map.
+router.post(
+  '/generate-concept',
+  authorize(ROLES.ADMIN),
+  validate(generateConceptSchema),
+  ctrl.generateConceptCtrl,
+);
+
+// UC-PLN-TPL-04: admin-only draft generation for a whole plan template.
+router.post(
+  '/generate-template',
+  authorize(ROLES.ADMIN),
+  validate(generateTemplateSchema),
+  ctrl.generateTemplateCtrl,
 );
 
 // Student-facing AI assistance (UC-AIA-01..13): own interaction log only.
@@ -42,6 +61,7 @@ router.post(
   validate(essayFeedbackSchema),
   ctrl.essayFeedbackCtrl,
 );
+router.post('/generate-plan', authorize(ROLES.STUDENT), validate(generatePlanSchema), ctrl.generatePlanCtrl);
 
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);

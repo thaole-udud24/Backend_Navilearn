@@ -18,15 +18,21 @@ const exportCtrl = asyncHandler(async (req, res) => {
 
 const getCtrl = asyncHandler(async (req, res) => ok(res, await service.getById(req.params.id)));
 
-const createCtrl = asyncHandler(async (req, res) => created(res, await service.create(actorOf(req), req.body), 'User created'));
+const createCtrl = asyncHandler(async (req, res) =>
+  created(res, await service.create(actorOf(req), req.body), 'User created'),
+);
 
 const updateCtrl = asyncHandler(async (req, res) =>
   ok(res, await service.update(actorOf(req), req.params.id, req.body), 'User updated'),
 );
 
-const lockCtrl = asyncHandler(async (req, res) => ok(res, await service.lock(actorOf(req), req.params.id, req.body), 'User locked'));
+const lockCtrl = asyncHandler(async (req, res) =>
+  ok(res, await service.lock(actorOf(req), req.params.id, req.body), 'User locked'),
+);
 
-const unlockCtrl = asyncHandler(async (req, res) => ok(res, await service.unlock(actorOf(req), req.params.id), 'User unlocked'));
+const unlockCtrl = asyncHandler(async (req, res) =>
+  ok(res, await service.unlock(actorOf(req), req.params.id), 'User unlocked'),
+);
 
 const removeCtrl = asyncHandler(async (req, res) => {
   await service.remove(actorOf(req), req.params.id);

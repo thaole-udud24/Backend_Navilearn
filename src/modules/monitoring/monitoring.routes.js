@@ -3,7 +3,12 @@ const authenticate = require('../../middlewares/authenticate');
 const authorize = require('../../middlewares/authorize');
 const validate = require('../../middlewares/validate');
 const { ROLES } = require('../../shared/roles');
-const { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema } = require('./monitoring.validation');
+const {
+  createSchema,
+  updateStatusSchema,
+  listQuerySchema,
+  idParamsSchema,
+} = require('./monitoring.validation');
 const ctrl = require('./monitoring.controller');
 
 const router = express.Router();

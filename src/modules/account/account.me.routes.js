@@ -20,7 +20,9 @@ const upload = multer({
   }),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) =>
-    IMAGE_EXT[file.mimetype] ? cb(null, true) : cb(ApiError.badRequest('Ảnh đại diện chỉ nhận png, jpg, webp', 'INVALID_FILE_TYPE')),
+    IMAGE_EXT[file.mimetype]
+      ? cb(null, true)
+      : cb(ApiError.badRequest('Ảnh đại diện chỉ nhận png, jpg, webp', 'INVALID_FILE_TYPE')),
 });
 
 // multer reports its own errors (e.g. too large) as plain Errors; turn them into 400s.

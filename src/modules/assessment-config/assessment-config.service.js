@@ -1,10 +1,12 @@
 const ApiError = require('../../utils/ApiError');
 const { parsePagination, buildMeta } = require('../../utils/pagination');
+const importBulk = require('../../utils/importBulk');
 const AssessmentConfigItem = require('./assessment-config.model');
 const Rubric = require('./rubric.model');
 const Concept = require('../knowledge/knowledge.model');
 const QuestionItem = require('../question-bank/question-bank.model');
 const { ROLES } = require('../../shared/roles');
+const { createSchema, createRubricSchema } = require('./assessment-config.validation');
 
 const UPDATABLE_FIELDS = ['title', 'questions', 'passScore', 'timeLimitMinutes', 'kind'];
 
@@ -152,6 +154,28 @@ async function findActiveRubricForConcept(conceptId) {
   return Rubric.findOne({ concept: conceptId, status: 'active' }).sort({ createdAt: -1 });
 }
 
+async function importBulkConfigs(ownerId, rows) {
+  return importBulk(rows, {
+    schema: createSchema,
+    create: (data) => create(ownerId, { ...data, source: 'import' }),
+  });
+}
+
+async function exportAll() {
+  return AssessmentConfigItem.find({}).sort({ createdAt: -1 }).limit(1000);
+}
+
+async function importBulkRubrics(ownerId, rows) {
+  return importBulk(rows, {
+    schema: createRubricSchema,
+    create: (data) => createRubric(ownerId, { ...data, source: 'import' }),
+  });
+}
+
+async function exportAllRubrics() {
+  return Rubric.find({}).sort({ createdAt: -1 }).limit(1000);
+}
+
 module.exports = {
   create,
   list,
@@ -161,10 +185,14 @@ module.exports = {
   duplicate,
   updateStatus,
   remove,
+  importBulk: importBulkConfigs,
+  exportAll,
   createRubric,
   listRubrics,
   getRubric,
   updateRubric,
   updateRubricStatus,
   findActiveRubricForConcept,
+  importBulkRubrics,
+  exportAllRubrics,
 };

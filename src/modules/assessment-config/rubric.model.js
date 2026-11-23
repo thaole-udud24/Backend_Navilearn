@@ -22,6 +22,7 @@ const rubricSchema = new mongoose.Schema(
       validate: { validator: (v) => v.length > 0, message: 'A rubric needs at least 1 criterion' },
     },
     status: { type: String, enum: ['active', 'archived'], default: 'active' },
+    source: { type: String, enum: ['manual', 'ai', 'import'], default: 'manual' },
   },
   { timestamps: true },
 );

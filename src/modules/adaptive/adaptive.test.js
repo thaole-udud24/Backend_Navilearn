@@ -35,7 +35,10 @@ describe('adaptive priority (BR-40)', () => {
   });
 
   it('ranks highest priority first', () => {
-    const r = rankActivities([{ id: 'low', ...none }, { id: 'high', ...full }]);
+    const r = rankActivities([
+      { id: 'low', ...none },
+      { id: 'high', ...full },
+    ]);
     expect(r.map((x) => x.id)).toEqual(['high', 'low']);
   });
 });
@@ -52,11 +55,23 @@ describe('next best action (AP-ADP-01)', () => {
   const inDays = (d) => new Date(now.getTime() + d * 86400000);
 
   it('buildActivity: no data gives neutral defaults', () => {
-    expect(buildActivity({ id: 'c', name: 'C' }, now)).toMatchObject({ mastery: 0, importance: 0.6, deadline: 0, forgetting: 0 });
+    expect(buildActivity({ id: 'c', name: 'C' }, now)).toMatchObject({
+      mastery: 0,
+      importance: 0.6,
+      deadline: 0,
+      forgetting: 0,
+    });
   });
 
   it('buildActivity: deadline urgency and forgetting scale with days', () => {
-    const a = buildActivity({ id: 'c', mastery: { score: 50, lastAttemptAt: inDays(-7) }, goal: { importance: 5, deadline: inDays(3) } }, now);
+    const a = buildActivity(
+      {
+        id: 'c',
+        mastery: { score: 50, lastAttemptAt: inDays(-7) },
+        goal: { importance: 5, deadline: inDays(3) },
+      },
+      now,
+    );
     expect(a.deadline).toBeCloseTo(0.9);
     expect(a.forgetting).toBeCloseTo(0.5);
     expect(a.importance).toBe(1);
@@ -69,8 +84,12 @@ describe('next best action (AP-ADP-01)', () => {
   });
 
   it('picks the concept with the nearest goal over a well-known one', async () => {
-    masteryService.listForOwner.mockResolvedValue({ items: [{ concept: { _id: 'c1', name: 'A' }, score: 90, lastAttemptAt: now }] });
-    planningService.listGoals.mockResolvedValue({ items: [{ concept: { _id: 'c2', name: 'B' }, importance: 5, deadline: inDays(2) }] });
+    masteryService.listForOwner.mockResolvedValue({
+      items: [{ concept: { _id: 'c1', name: 'A' }, score: 90, lastAttemptAt: now }],
+    });
+    planningService.listGoals.mockResolvedValue({
+      items: [{ concept: { _id: 'c2', name: 'B' }, importance: 5, deadline: inDays(2) }],
+    });
     const r = await service.nextBestAction('u1', now);
     expect(r.concept).toEqual({ id: 'c2', name: 'B' });
     expect(r.reason).toBeTruthy();
@@ -104,7 +123,9 @@ describe('replan (AP-ADP-03)', () => {
   it('rejects a plan that is not active or has nothing missed', async () => {
     planningService.getOwned.mockResolvedValue(plan([], 'proposed'));
     await expect(service.replan('u1', 'p1', now)).rejects.toMatchObject({ status: 409 });
-    planningService.getOwned.mockResolvedValue(plan([{ concept: 'c1', startAt: at('2026-11-12T08:00:00Z'), durationMin: 30, status: 'planned' }]));
+    planningService.getOwned.mockResolvedValue(
+      plan([{ concept: 'c1', startAt: at('2026-11-12T08:00:00Z'), durationMin: 30, status: 'planned' }]),
+    );
     await expect(service.replan('u1', 'p1', now)).rejects.toMatchObject({ status: 409 });
   });
 
@@ -120,11 +141,16 @@ describe('replan (AP-ADP-03)', () => {
     expect(proposed.status).toBe('proposed');
     expect(proposed.replaces).toBe('p1');
     expect(proposed.sessions.map((s) => s.concept)).toEqual(['c2', 'c1']);
-    expect(proposed.sessions.map((s) => s.startAt.toISOString())).toEqual(['2026-11-11T09:30:00.000Z', '2026-11-12T08:00:00.000Z']);
+    expect(proposed.sessions.map((s) => s.startAt.toISOString())).toEqual([
+      '2026-11-11T09:30:00.000Z',
+      '2026-11-12T08:00:00.000Z',
+    ]);
     expect(reason).toBeTruthy();
   });
-    it('ignores cancelled sessions: not counted as missed, not rescheduled', async () => {
-    planningService.getOwned.mockResolvedValue(plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'cancelled' }]));
+  it('ignores cancelled sessions: not counted as missed, not rescheduled', async () => {
+    planningService.getOwned.mockResolvedValue(
+      plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'cancelled' }]),
+    );
     await expect(service.checkReplan('u1', 'p1', now)).resolves.toEqual({ needed: false, missedCount: 0 });
     await expect(service.replan('u1', 'p1', now)).rejects.toMatchObject({ status: 409 });
   });
@@ -143,7 +169,9 @@ describe('start activity (UC-ADP-02)', () => {
   });
 
   it('records the current recommendation as a started activity', async () => {
-    masteryService.listForOwner.mockResolvedValue({ items: [{ concept: { _id: 'c2', name: 'B' }, score: 10, lastAttemptAt: now }] });
+    masteryService.listForOwner.mockResolvedValue({
+      items: [{ concept: { _id: 'c2', name: 'B' }, score: 10, lastAttemptAt: now }],
+    });
     const r = await service.startNextBestAction('u1', now);
     expect(Activity.create).toHaveBeenCalledWith(expect.objectContaining({ owner: 'u1', concept: 'c2' }));
     expect(r.concept).toEqual({ id: 'c2', name: 'B' });
@@ -161,17 +189,28 @@ describe('replan check (AP-ADP-02)', () => {
   const planningService = require('../planning/planning.service');
   const service = require('./adaptive.service');
   const now = new Date('2026-11-10T00:00:00Z');
-  const session = (iso, status = 'planned') => ({ concept: 'c1', startAt: new Date(iso), durationMin: 30, status });
+  const session = (iso, status = 'planned') => ({
+    concept: 'c1',
+    startAt: new Date(iso),
+    durationMin: 30,
+    status,
+  });
   const plan = (sessions, status = 'active') => ({ _id: 'p1', title: 'W1', status, sessions });
 
   it('needs replanning when a planned session is already in the past', async () => {
-    planningService.getOwned.mockResolvedValue(plan([session('2026-11-09T08:00:00Z'), session('2026-11-12T08:00:00Z')]));
+    planningService.getOwned.mockResolvedValue(
+      plan([session('2026-11-09T08:00:00Z'), session('2026-11-12T08:00:00Z')]),
+    );
     expect(await service.checkReplan('u1', 'p1', now)).toEqual({ needed: true, missedCount: 1 });
   });
 
   it('counts sessions marked missed, ignores done and future ones', async () => {
     planningService.getOwned.mockResolvedValue(
-      plan([session('2026-11-12T08:00:00Z', 'missed'), session('2026-11-08T08:00:00Z', 'done'), session('2026-11-13T08:00:00Z')]),
+      plan([
+        session('2026-11-12T08:00:00Z', 'missed'),
+        session('2026-11-08T08:00:00Z', 'done'),
+        session('2026-11-13T08:00:00Z'),
+      ]),
     );
     expect(await service.checkReplan('u1', 'p1', now)).toEqual({ needed: true, missedCount: 1 });
   });

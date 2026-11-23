@@ -15,6 +15,7 @@ describe('planning module', () => {
 });
 jest.mock('./planning.model');
 jest.mock('./planning.goal.model');
+jest.mock('../question-bank/question-bank.model');
 
 describe('planning validation', () => {
   const { createSchema } = require('./planning.validation');
@@ -22,7 +23,10 @@ describe('planning validation', () => {
 
   it('accepts a plan with a valid session and defaults sessions to []', () => {
     expect(createSchema.parse({ title: 'Week 1' }).sessions).toEqual([]);
-    const r = createSchema.safeParse({ title: 'W', sessions: [{ concept: cid, startAt: '2026-11-10T08:00:00Z', durationMin: 45 }] });
+    const r = createSchema.safeParse({
+      title: 'W',
+      sessions: [{ concept: cid, startAt: '2026-11-10T08:00:00Z', durationMin: 45 }],
+    });
     expect(r.success).toBe(true);
   });
 
@@ -69,12 +73,16 @@ describe('planning goals (PLN-03)', () => {
   const cid = 'a'.repeat(24);
 
   it('accepts a goal with a future deadline', () => {
-    expect(goalSchema.safeParse({ concept: cid, title: 'G', deadline: '2999-01-01', importance: 4 }).success).toBe(true);
+    expect(
+      goalSchema.safeParse({ concept: cid, title: 'G', deadline: '2999-01-01', importance: 4 }).success,
+    ).toBe(true);
   });
 
   it('rejects a past deadline and importance out of 1-5', () => {
     expect(goalSchema.safeParse({ concept: cid, title: 'G', deadline: '2000-01-01' }).success).toBe(false);
-    expect(goalSchema.safeParse({ concept: cid, title: 'G', deadline: '2999-01-01', importance: 6 }).success).toBe(false);
+    expect(
+      goalSchema.safeParse({ concept: cid, title: 'G', deadline: '2999-01-01', importance: 6 }).success,
+    ).toBe(false);
   });
 
   it('update needs at least one field', () => {
@@ -84,7 +92,9 @@ describe('planning goals (PLN-03)', () => {
 
   it('forbids updating a goal of another student', async () => {
     Goal.findById.mockResolvedValue({ owner: 'u1' });
-    await expect(service.updateGoal('g1', { id: 'u2' }, { importance: 2 })).rejects.toMatchObject({ status: 403 });
+    await expect(service.updateGoal('g1', { id: 'u2' }, { importance: 2 })).rejects.toMatchObject({
+      status: 403,
+    });
   });
 
   it('owner update saves the new fields', async () => {
@@ -100,7 +110,12 @@ describe('planning sessions (PLN-02)', () => {
   const Plan = require('./planning.model');
   const service = require('./planning.service');
   const owner = { id: 'u1' };
-  const activePlan = () => ({ owner: 'u1', status: 'active', sessions: [{ _id: 's1', status: 'planned' }], save: jest.fn() });
+  const activePlan = () => ({
+    owner: 'u1',
+    status: 'active',
+    sessions: [{ _id: 's1', status: 'planned' }],
+    save: jest.fn(),
+  });
 
   it('update validation: needs a field and only allows known statuses', () => {
     expect(updateSessionSchema.safeParse({}).success).toBe(false);
@@ -125,7 +140,9 @@ describe('planning sessions (PLN-02)', () => {
 
   it('404 for an unknown session, 409 for a plan that is not active', async () => {
     Plan.findById.mockResolvedValue(activePlan());
-    await expect(service.updateSession('p1', 'nope', owner, { status: 'done' })).rejects.toMatchObject({ status: 404 });
+    await expect(service.updateSession('p1', 'nope', owner, { status: 'done' })).rejects.toMatchObject({
+      status: 404,
+    });
     Plan.findById.mockResolvedValue({ ...activePlan(), status: 'proposed' });
     await expect(service.removeSession('p1', 's1', owner)).rejects.toMatchObject({ status: 409 });
   });
@@ -144,8 +161,12 @@ describe('planning sessions (PLN-02)', () => {
 
     it('rejects a new session that overlaps, ignores cancelled ones', async () => {
       Plan.findById.mockResolvedValue(planWith(s('s1', '08:00'), s('s2', '10:00', 'cancelled')));
-      await expect(service.addSession('p1', owner, { concept: 'c', startAt: at('08:30'), durationMin: 30 })).rejects.toMatchObject({ status: 409 });
-      await expect(service.addSession('p1', owner, { concept: 'c', startAt: at('10:00'), durationMin: 30 })).resolves.toBeDefined();
+      await expect(
+        service.addSession('p1', owner, { concept: 'c', startAt: at('08:30'), durationMin: 30 }),
+      ).rejects.toMatchObject({ status: 409 });
+      await expect(
+        service.addSession('p1', owner, { concept: 'c', startAt: at('10:00'), durationMin: 30 }),
+      ).resolves.toBeDefined();
     });
 
     it('allows back-to-back sessions and moving a session onto its own slot', async () => {
@@ -157,9 +178,15 @@ describe('planning sessions (PLN-02)', () => {
 
     it('reschedule rejects overlap; only a planned session can be moved, cancelled or completed', async () => {
       Plan.findById.mockResolvedValue(planWith(s('s1', '08:00'), s('s2', '09:00'), s('s3', '12:00', 'done')));
-      await expect(service.updateSession('p1', 's2', owner, { startAt: at('08:30') })).rejects.toMatchObject({ status: 409 });
-      await expect(service.updateSession('p1', 's3', owner, { status: 'cancelled' })).rejects.toMatchObject({ status: 409 });
-      await expect(service.updateSession('p1', 's3', owner, { startAt: at('13:00') })).rejects.toMatchObject({ status: 409 });
+      await expect(service.updateSession('p1', 's2', owner, { startAt: at('08:30') })).rejects.toMatchObject({
+        status: 409,
+      });
+      await expect(service.updateSession('p1', 's3', owner, { status: 'cancelled' })).rejects.toMatchObject({
+        status: 409,
+      });
+      await expect(service.updateSession('p1', 's3', owner, { startAt: at('13:00') })).rejects.toMatchObject({
+        status: 409,
+      });
     });
 
     it('cancel keeps the session as status cancelled', async () => {
@@ -171,7 +198,9 @@ describe('planning sessions (PLN-02)', () => {
 
     it('note needs a done session, or completion in the same request', async () => {
       Plan.findById.mockResolvedValue(planWith(s('s1', '08:00')));
-      await expect(service.updateSession('p1', 's1', owner, { note: 'x' })).rejects.toMatchObject({ status: 409 });
+      await expect(service.updateSession('p1', 's1', owner, { note: 'x' })).rejects.toMatchObject({
+        status: 409,
+      });
       const plan = planWith(s('s1', '08:00'), s('s2', '10:00', 'done'));
       Plan.findById.mockResolvedValue(plan);
       await service.updateSession('p1', 's1', owner, { status: 'done', note: 'ok' });
@@ -182,6 +211,66 @@ describe('planning sessions (PLN-02)', () => {
     it('validation: system-only statuses are not accepted from the client', () => {
       expect(updateSessionSchema.safeParse({ status: 'missed' }).success).toBe(false);
       expect(updateSessionSchema.safeParse({ note: 'x' }).success).toBe(true);
+    });
+  });
+
+  describe('session quiz gate (UC-PLN-TPL-03)', () => {
+    const QuestionItem = require('../question-bank/question-bank.model');
+    const planWithQuiz = (quizPassed = false) => ({
+      owner: 'u1',
+      status: 'active',
+      sessions: [{ _id: 's1', status: 'planned', questions: ['q1', 'q2'], quizPassed }],
+      save: jest.fn(),
+    });
+
+    it('rejects marking done when the attached quiz has not been passed', async () => {
+      Plan.findById.mockResolvedValue(planWithQuiz(false));
+      await expect(service.updateSession('p1', 's1', owner, { status: 'done' })).rejects.toMatchObject({
+        status: 409,
+      });
+    });
+
+    it('allows marking done once the quiz is passed', async () => {
+      const plan = planWithQuiz(true);
+      Plan.findById.mockResolvedValue(plan);
+      await service.updateSession('p1', 's1', owner, { status: 'done' });
+      expect(plan.sessions[0].status).toBe('done');
+    });
+
+    it('submitSessionQuiz grades answers and only sets quizPassed at/above 70%', async () => {
+      QuestionItem.find.mockResolvedValue([
+        { _id: 'q1', options: [{ text: 'a', isCorrect: true }, { text: 'b' }] },
+        { _id: 'q2', options: [{ text: 'a', isCorrect: true }, { text: 'b' }] },
+      ]);
+      const failPlan = planWithQuiz(false);
+      Plan.findById.mockResolvedValue(failPlan);
+      const fail = await service.submitSessionQuiz('p1', 's1', owner, [
+        { questionId: 'q1', selectedOptionIndex: 1 },
+        { questionId: 'q2', selectedOptionIndex: 1 },
+      ]);
+      expect(fail).toEqual({ scorePercent: 0, passed: false, correctCount: 0, totalCount: 2 });
+      expect(failPlan.sessions[0].quizPassed).toBe(false);
+
+      const passPlan = planWithQuiz(false);
+      Plan.findById.mockResolvedValue(passPlan);
+      const pass = await service.submitSessionQuiz('p1', 's1', owner, [
+        { questionId: 'q1', selectedOptionIndex: 0 },
+        { questionId: 'q2', selectedOptionIndex: 0 },
+      ]);
+      expect(pass).toEqual({ scorePercent: 100, passed: true, correctCount: 2, totalCount: 2 });
+      expect(passPlan.sessions[0].quizPassed).toBe(true);
+    });
+
+    it('rejects submitting a quiz for a session with no attached questions', async () => {
+      Plan.findById.mockResolvedValue({
+        owner: 'u1',
+        status: 'active',
+        sessions: [{ _id: 's1', status: 'planned', questions: [] }],
+        save: jest.fn(),
+      });
+      await expect(
+        service.submitSessionQuiz('p1', 's1', owner, [{ questionId: 'q1', selectedOptionIndex: 0 }]),
+      ).rejects.toMatchObject({ status: 409 });
     });
   });
 });

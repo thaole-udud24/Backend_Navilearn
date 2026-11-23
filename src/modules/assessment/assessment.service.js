@@ -150,7 +150,7 @@ async function gradeAnswers(answers, questionById, requesterId, conceptId) {
   // instead of serializing one AI round-trip per essay question.
   const gradedAnswers = await Promise.all(
     matched.map(async ({ answer, question }) => {
-      if (question.type === 'mcq') {
+      if (question.type === 'mcq' || question.type === 'true_false') {
         const selected = question.options[answer.selectedOptionIndex];
         const isCorrect = Boolean(selected?.isCorrect);
         const earnedPoints = isCorrect ? question.points : 0;

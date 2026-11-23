@@ -8,13 +8,17 @@ const updateProfileCtrl = asyncHandler(async (req, res) =>
   ok(res, await service.updateProfile(req.user.id, req.body), 'Profile updated'),
 );
 
-const avatarCtrl = asyncHandler(async (req, res) => ok(res, await service.setAvatar(req.user.id, req.file), 'Avatar updated'));
+const avatarCtrl = asyncHandler(async (req, res) =>
+  ok(res, await service.setAvatar(req.user.id, req.file), 'Avatar updated'),
+);
 
 const changePasswordCtrl = asyncHandler(async (req, res) =>
   ok(res, await service.changePassword(req.user.id, req.user.sid, req.body), 'Password changed'),
 );
 
-const listSessionsCtrl = asyncHandler(async (req, res) => ok(res, await service.listSessions(req.user.id, req.user.sid)));
+const listSessionsCtrl = asyncHandler(async (req, res) =>
+  ok(res, await service.listSessions(req.user.id, req.user.sid)),
+);
 
 const revokeSessionCtrl = asyncHandler(async (req, res) => {
   await service.revokeSession(req.user.id, req.params.id);
