@@ -20,6 +20,7 @@ router.get('/export', authorize(ROLES.ADMIN), ctrl.exportCtrl);
 router.post('/import', authorize(ROLES.ADMIN), validate(importSchema), ctrl.importCtrl);
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', authorize(ROLES.ADMIN), validate(createSchema), ctrl.createCtrl);
+router.get('/subject/:id/graph', validate(idParamsSchema, 'params'), ctrl.subjectGraphCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
 router.patch(
   '/:id',

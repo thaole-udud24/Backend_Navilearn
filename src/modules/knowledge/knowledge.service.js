@@ -29,6 +29,23 @@ async function assertNoParentCycle(id, parentId) {
   }
 }
 
+// Prerequisites form a DAG across the whole bank, not a tree — a concept can have several, and
+// several concepts can share one — so unlike parentConcept this needs a real graph search: does
+// any of the new prerequisites already depend (directly or transitively) on `id` itself?
+async function assertNoPrerequisiteCycle(id, prerequisiteIds) {
+  const visiting = [...new Set(prerequisiteIds.map(String))];
+  const seen = new Set();
+  while (visiting.length) {
+    const cursor = visiting.pop();
+    if (cursor === String(id))
+      throw ApiError.badRequest('Quan hệ tiên quyết tạo thành vòng lặp', 'PREREQUISITE_CYCLE');
+    if (seen.has(cursor)) continue;
+    seen.add(cursor);
+    const node = await Concept.findById(cursor).select('prerequisites');
+    (node?.prerequisites ?? []).forEach((p) => visiting.push(String(p)));
+  }
+}
+
 async function validateRelations(id, data) {
   if (data.parentConcept !== undefined && data.parentConcept !== null) {
     if (id && String(data.parentConcept) === String(id)) {
@@ -43,6 +60,7 @@ async function validateRelations(id, data) {
       throw ApiError.badRequest('Kiến thức không thể là tiên quyết của chính nó', 'SELF_RELATION');
     }
     await assertConceptsExist(data.prerequisites);
+    if (id) await assertNoPrerequisiteCycle(id, data.prerequisites);
   }
   if (data.related) {
     if (id && data.related.some((p) => String(p) === String(id))) {
@@ -64,6 +82,13 @@ async function list(query, requester) {
   // pass their own status filter (or none, to see every status).
   const filter =
     requester.role === ROLES.ADMIN ? (query.status ? { status: query.status } : {}) : { status: 'active' };
+  if (query.parentConcept !== undefined) {
+    filter.parentConcept = query.parentConcept === 'null' ? null : query.parentConcept;
+  }
+  // `find()` auto-excludes soft-deleted docs (see softDelete.plugin's pre(/^find/) hook), but that
+  // hook never fires for countDocuments — without this, the "Tổng số" badge would still count
+  // every soft-deleted Concept forever.
+  filter.deletedAt = null;
   const [items, total] = await Promise.all([
     Concept.find(filter)
       .sort({ order: 1, createdAt: -1 })
@@ -127,6 +152,42 @@ async function exportAll() {
   return Concept.find({}).sort({ order: 1, createdAt: -1 }).limit(1000);
 }
 
+// Knowledge Graph canvas (Admin Kho tri thức, Student Bản đồ tri thức, Learning Path Builder) needs
+// every *leaf* concept under a subject in one call — prerequisites are a DAG that freely crosses
+// chapter/topic boundaries (see NaviLearn_Knowledge_Seed_6_Mon.md §C), so a canvas fed only one
+// parentConcept level at a time can never render those cross-branch edges; it was rendering
+// chapters (which carry no real prerequisites) instead of concepts, which is why the graph
+// collapsed into a single disconnected line. A "leaf" here means "has no children of its own" —
+// chapters and topics are pure containers, never prerequisite endpoints themselves.
+async function getSubjectGraph(subjectId) {
+  const subject = await Concept.findOne({ _id: subjectId, parentConcept: null, status: 'active' });
+  if (!subject) throw ApiError.notFound('Subject not found');
+
+  const allIds = [subject._id];
+  let frontier = [subject._id];
+  while (frontier.length) {
+    const children = await Concept.find(
+      { parentConcept: { $in: frontier }, status: 'active' },
+      '_id',
+    );
+    frontier = children.map((c) => c._id);
+    allIds.push(...frontier);
+  }
+
+  const parentIds = new Set(
+    (await Concept.find({ parentConcept: { $in: allIds } }, 'parentConcept')).map((c) =>
+      String(c.parentConcept),
+    ),
+  );
+  const leafIds = allIds.filter((id) => !parentIds.has(String(id)));
+
+  // Populate parentConcept (the "topic" a leaf sits under) so the canvas can color/group leaves by
+  // their real topic cluster — never a fabricated grouping.
+  return Concept.find({ _id: { $in: leafIds }, status: 'active' })
+    .sort({ order: 1 })
+    .populate('parentConcept', 'name');
+}
+
 module.exports = {
   create,
   list,
@@ -136,4 +197,5 @@ module.exports = {
   remove,
   importBulk: importBulkConcepts,
   exportAll,
+  getSubjectGraph,
 };

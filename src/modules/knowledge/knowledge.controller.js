@@ -42,6 +42,11 @@ const exportCtrl = asyncHandler(async (req, res) => {
   return ok(res, items);
 });
 
+const subjectGraphCtrl = asyncHandler(async (req, res) => {
+  const items = await service.getSubjectGraph(req.params.id);
+  return ok(res, items);
+});
+
 module.exports = {
   createCtrl,
   listCtrl,
@@ -51,4 +56,5 @@ module.exports = {
   removeCtrl,
   importCtrl,
   exportCtrl,
+  subjectGraphCtrl,
 };

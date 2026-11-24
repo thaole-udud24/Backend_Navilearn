@@ -23,6 +23,8 @@ const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
   status: z.enum(['active', 'archived']).optional(),
+  // 'null' = top-level concepts only (no parent); any other value = direct children of that id.
+  parentConcept: z.string().min(1).optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
