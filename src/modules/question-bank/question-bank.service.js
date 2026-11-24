@@ -52,7 +52,7 @@ async function list(query, requester) {
 }
 
 async function getById(id, requester) {
-  const item = await QuestionItem.findById(id);
+  const item = await QuestionItem.findById(id).populate('concept', 'name');
   if (!item) throw ApiError.notFound('Question not found');
   return stripAnswer(item, requester);
 }
