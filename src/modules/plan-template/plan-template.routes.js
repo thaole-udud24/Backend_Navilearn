@@ -9,6 +9,7 @@ const {
   listQuerySchema,
   idParamsSchema,
   applySchema,
+  publishSchema,
   importSchema,
 } = require('./plan-template.validation');
 const ctrl = require('./plan-template.controller');
@@ -32,6 +33,19 @@ router.patch(
   ctrl.updateCtrl,
 );
 router.delete('/:id', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.removeCtrl);
+router.patch(
+  '/:id/publish',
+  authorize(ROLES.ADMIN),
+  validate(idParamsSchema, 'params'),
+  validate(publishSchema),
+  ctrl.publishCtrl,
+);
+router.patch(
+  '/:id/archive',
+  authorize(ROLES.ADMIN),
+  validate(idParamsSchema, 'params'),
+  ctrl.archiveCtrl,
+);
 
 router.post(
   '/:id/apply',

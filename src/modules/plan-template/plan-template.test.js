@@ -7,15 +7,26 @@ describe('plan-template validation', () => {
   const { createSchema } = require('./plan-template.validation');
 
   it('accepts a template with 1-20 steps', () => {
-    const r = createSchema.safeParse({ title: 'Ôn thi', steps: [{ dayOffset: 1, durationMin: 30 }] });
+    const r = createSchema.safeParse({
+      title: 'Ôn thi',
+      steps: [{ dayOffset: 1, durationMin: 30, title: 'Buổi 1' }],
+    });
     expect(r.success).toBe(true);
   });
 
   it('rejects an empty step list and an out-of-range dayOffset', () => {
     expect(createSchema.safeParse({ title: 'Ôn thi', steps: [] }).success).toBe(false);
     expect(
-      createSchema.safeParse({ title: 'Ôn thi', steps: [{ dayOffset: 99, durationMin: 30 }] }).success,
+      createSchema.safeParse({
+        title: 'Ôn thi',
+        steps: [{ dayOffset: 99, durationMin: 30, title: 'Buổi 1' }],
+      }).success,
     ).toBe(false);
+  });
+
+  it('rejects a step with no title', () => {
+    const r = createSchema.safeParse({ title: 'Ôn thi', steps: [{ dayOffset: 1, durationMin: 30 }] });
+    expect(r.success).toBe(false);
   });
 });
 
@@ -32,17 +43,27 @@ describe('plan-template service', () => {
     Concept.exists.mockResolvedValue(true);
   });
 
-  it('listForRequester: student only sees active templates, admin sees everything', async () => {
+  it('listForRequester: student only sees published templates, admin sees everything', async () => {
     PlanTemplateItem.find.mockReturnValue({
       sort: () => ({ skip: () => ({ limit: () => ({ populate: () => [] }) }) }),
     });
     PlanTemplateItem.countDocuments.mockResolvedValue(0);
 
     await service.listForRequester({ role: 'student' }, {});
-    expect(PlanTemplateItem.find).toHaveBeenCalledWith({ isActive: true });
+    expect(PlanTemplateItem.find).toHaveBeenCalledWith({ status: 'published' });
 
     await service.listForRequester({ role: 'admin' }, {});
     expect(PlanTemplateItem.find).toHaveBeenCalledWith({});
+  });
+
+  it('listForRequester: filters by concept when given, for either role', async () => {
+    PlanTemplateItem.find.mockReturnValue({
+      sort: () => ({ skip: () => ({ limit: () => ({ populate: () => [] }) }) }),
+    });
+    PlanTemplateItem.countDocuments.mockResolvedValue(0);
+
+    await service.listForRequester({ role: 'student' }, { concept: 'c1' });
+    expect(PlanTemplateItem.find).toHaveBeenCalledWith({ status: 'published', concept: 'c1' });
   });
 
   it('create rejects a template whose concept does not exist', async () => {
@@ -91,7 +112,7 @@ describe('plan-template service', () => {
       populate: () => ({
         _id: 't1',
         title: 'Ôn tập',
-        isActive: true,
+        status: 'published',
         concept: 'c1',
         steps: [{ dayOffset: 2, durationMin: 30, note: 'Đọc bài' }],
       }),
@@ -111,7 +132,7 @@ describe('plan-template service', () => {
       populate: () => ({
         _id: 't1',
         title: 'Ôn tập',
-        isActive: true,
+        status: 'published',
         concept: 'c1',
         steps: [{ dayOffset: 1, durationMin: 20 }],
       }),
@@ -126,7 +147,7 @@ describe('plan-template service', () => {
       populate: () => ({
         _id: 't1',
         title: 'Ôn tập',
-        isActive: true,
+        status: 'published',
         concept: null,
         steps: [{ dayOffset: 1, durationMin: 20 }],
       }),
@@ -134,16 +155,36 @@ describe('plan-template service', () => {
     await expect(service.apply('u1', 't1')).rejects.toMatchObject({ status: 400 });
   });
 
-  it('apply: rejects an inactive template', async () => {
+  it('apply: rejects a draft template', async () => {
     PlanTemplateItem.findById.mockReturnValue({
       populate: () => ({
         _id: 't1',
         title: 'Ôn tập',
-        isActive: false,
+        status: 'draft',
         concept: 'c1',
         steps: [{ dayOffset: 1, durationMin: 20 }],
       }),
     });
     await expect(service.apply('u1', 't1')).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('publish: sets status/publishedAt/changeLog and bumps version on re-publish', async () => {
+    const item = { status: 'draft', version: 1, save: jest.fn().mockResolvedValue(undefined) };
+    PlanTemplateItem.findById.mockReturnValue({ populate: () => item });
+    await service.publish('t1', 'admin1', 'initial release');
+    expect(item.status).toBe('published');
+    expect(item.version).toBe(1);
+    expect(item.changeLog).toBe('initial release');
+
+    item.status = 'published';
+    await service.publish('t1', 'admin1', 'second release');
+    expect(item.version).toBe(2);
+  });
+
+  it('archive: sets status to archived', async () => {
+    const item = { status: 'published', save: jest.fn().mockResolvedValue(undefined) };
+    PlanTemplateItem.findById.mockReturnValue({ populate: () => item });
+    await service.archive('t1', 'admin1');
+    expect(item.status).toBe('archived');
   });
 });
