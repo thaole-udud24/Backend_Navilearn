@@ -1,20 +1,26 @@
 const mongoose = require('mongoose');
-const softDeletePlugin = require('../../plugins/softDelete.plugin');
 const auditPlugin = require('../../plugins/audit.plugin');
+const { SUBJECT_SCOPE, SUBJECT_STATUS } = require('./subject.constants');
 
-// Subject module (scaffolded from _template; business logic pending per BRD).
-const templateItemSchema = new mongoose.Schema(
+// One collection for both kinds of subject: a student's personal subject (owner set) and an entry of the
+// ADMIN-managed shared catalog (owner null). Shared entries are never matched by account purge (BR-26).
+const subjectSchema = new mongoose.Schema(
   {
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    title: { type: String, required: true, trim: true, maxlength: 200 },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
-    status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
+    scope: { type: String, enum: Object.values(SUBJECT_SCOPE), default: SUBJECT_SCOPE.PERSONAL },
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    name: { type: String, required: true, trim: true, maxlength: 120 },
+    description: { type: String, trim: true, maxlength: 1000, default: '' },
+    status: { type: String, enum: Object.values(SUBJECT_STATUS), default: SUBJECT_STATUS.ACTIVE },
+    pinned: { type: Boolean, default: false },
+    order: { type: Number, default: 0 },
+    // Set when a student picked this subject from the shared catalog.
+    catalogSubject: { type: mongoose.Schema.Types.ObjectId, ref: 'Subject', default: null },
   },
   { timestamps: true },
 );
 
-templateItemSchema.plugin(softDeletePlugin);
-templateItemSchema.plugin(auditPlugin);
-templateItemSchema.index({ owner: 1, createdAt: -1 });
+subjectSchema.plugin(auditPlugin);
+subjectSchema.index({ owner: 1, status: 1, pinned: -1, order: 1 });
+subjectSchema.index({ scope: 1, status: 1, name: 1 });
 
-module.exports = mongoose.model('SubjectItem', templateItemSchema);
+module.exports = mongoose.model('Subject', subjectSchema);
