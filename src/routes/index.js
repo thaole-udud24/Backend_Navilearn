@@ -27,6 +27,7 @@ const reportRoutes = require('../modules/report/report.routes');
 const riskRoutes = require('../modules/risk/risk.routes');
 const subjectRoutes = require('../modules/subject/subject.routes');
 const studentSubjectRoutes = require('../modules/student-subject/student-subject.routes');
+const { catalogRouter, documentRouter } = require('../modules/subject/subject.catalog.routes');
 const supportRoutes = require('../modules/support/support.routes');
 
 const router = express.Router();
@@ -64,6 +65,8 @@ router.use('/report-items', reportRoutes);
 router.use('/risk-items', riskRoutes);
 router.use('/subject-items', subjectRoutes);
 router.use('/student-subject-items', studentSubjectRoutes);
+router.use('/subject-catalog', catalogRouter);
+router.use('/shared-documents', documentRouter);
 router.use('/support-items', supportRoutes);
 
 module.exports = router;

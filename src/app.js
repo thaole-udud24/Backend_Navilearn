@@ -17,15 +17,15 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use(requestContext);
 
-// Uploaded avatars. helmet's default Cross-Origin-Resource-Policy is same-origin, which would block the
+// Uploaded avatars only (documents are private and go through authenticated download endpoints). helmet's default Cross-Origin-Resource-Policy is same-origin, which would block the
 // frontend (another origin) from showing them, so it is relaxed for this static path only.
 app.use(
-  '/uploads',
+  '/uploads/avatars',
   (req, res, next) => {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
   },
-  express.static(path.resolve(env.STORAGE_UPLOAD_DIR)),
+  express.static(path.resolve(env.STORAGE_UPLOAD_DIR, 'avatars')),
 );
 
 app.use('/api/v1', routes);
