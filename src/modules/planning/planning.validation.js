@@ -43,6 +43,15 @@ const listQuerySchema = z.object({
   concept: objectId.optional(),
 });
 
+// UC-PLN-01/02: calendar window (from inclusive, to exclusive) and/or history by status.
+const sessionsQuerySchema = z
+  .object({
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+    status: z.enum(['planned', 'done', 'missed', 'cancelled']).optional(),
+  })
+  .refine((q) => !q.from || !q.to || q.from < q.to, 'from must be before to');
+
 const idParamsSchema = z.object({ id: objectId });
 
 const sessionParamsSchema = z.object({ id: objectId, sessionId: objectId });
@@ -61,6 +70,7 @@ module.exports = {
   goalSchema,
   updateGoalSchema,
   listQuerySchema,
+  sessionsQuerySchema,
   idParamsSchema,
   sessionParamsSchema,
   submitQuizSchema,

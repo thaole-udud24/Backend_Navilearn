@@ -12,6 +12,11 @@ const listCtrl = asyncHandler(async (req, res) => {
   return ok(res, items, 'OK', meta);
 });
 
+const listSessionsCtrl = asyncHandler(async (req, res) => {
+  const sessions = await service.listSessions(req.user.id, req.query);
+  return ok(res, sessions);
+});
+
 const getCtrl = asyncHandler(async (req, res) => {
   const item = await service.getOwnedForResponse(req.params.id, req.user);
   return ok(res, item);
@@ -80,6 +85,7 @@ const removeGoalCtrl = asyncHandler(async (req, res) => {
 module.exports = {
   createCtrl,
   listCtrl,
+  listSessionsCtrl,
   getCtrl,
   confirmCtrl,
   addSessionCtrl,

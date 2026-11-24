@@ -96,13 +96,14 @@ async function replan(ownerId, planId, now = new Date()) {
       return { concept: s.concept, startAt, durationMin: s.durationMin };
     });
 
+  const reason = `${missed.length} phiên bị bỏ lỡ; ${sessions.length} phiên chưa học được xếp lại theo mức ưu tiên, mỗi ngày một phiên, bắt đầu từ ngày mai`;
   const proposed = await planningService.create(ownerId, {
     title: `${plan.title} (điều chỉnh)`,
     status: 'proposed',
     replaces: plan._id,
+    reason,
     sessions,
-  });
-  const reason = `${missed.length} phiên bị bỏ lỡ; ${sessions.length} phiên chưa học được xếp lại theo mức ưu tiên, mỗi ngày một phiên, bắt đầu từ ngày mai`;
+  });  
   return { plan: proposed, reason };
 }
 

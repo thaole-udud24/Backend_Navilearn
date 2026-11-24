@@ -146,6 +146,7 @@ describe('replan (AP-ADP-03)', () => {
       '2026-11-12T08:00:00.000Z',
     ]);
     expect(reason).toBeTruthy();
+    expect(proposed.reason).toBe(reason);
   });
   it('ignores cancelled sessions: not counted as missed, not rescheduled', async () => {
     planningService.getOwned.mockResolvedValue(

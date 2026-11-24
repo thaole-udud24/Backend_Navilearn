@@ -281,4 +281,34 @@ describe('planning sessions (PLN-02)', () => {
       ).rejects.toMatchObject({ status: 409 });
     });
   });
+
+  describe('sessions view (UC-PLN-01/02)', () => {
+    const { sessionsQuerySchema } = require('./planning.validation');
+    const now = new Date('2026-11-20T00:00:00Z');
+    const at = (d) => new Date(`2026-11-${d}T08:00:00Z`);
+    const mk = (id, d, status) => ({ _id: id, concept: 'c', startAt: at(d), durationMin: 30, status });
+    const plan = { _id: 'p1', title: 'W1', sessions: [mk('s1', '25', 'planned'), mk('s2', '18', 'planned'), mk('s3', '15', 'done'), mk('s4', '22', 'cancelled')] };
+
+    beforeEach(() => Plan.find.mockResolvedValue([plan]));
+
+    it('lists sessions sorted by start; a past planned session shows as missed', async () => {
+      const r = await service.listSessions('u1', {}, now);
+      expect(r.map((x) => [x.id, x.status])).toEqual([['s3', 'done'], ['s2', 'missed'], ['s4', 'cancelled'], ['s1', 'planned']]);
+      expect(Plan.find).toHaveBeenCalledWith({ owner: 'u1', status: 'active' });
+    });
+
+    it('filters by window (to exclusive) and by status', async () => {
+      const win = await service.listSessions('u1', { from: at('18'), to: at('25') }, now);
+      expect(win.map((x) => x.id)).toEqual(['s2', 's4']);
+      const hist = await service.listSessions('u1', { status: 'missed' }, now);
+      expect(hist.map((x) => x.id)).toEqual(['s2']);
+    });
+
+    it('validation: coerces dates, rejects from >= to and unknown status', () => {
+      expect(sessionsQuerySchema.parse({ from: '2026-11-16', to: '2026-11-23' }).from).toBeInstanceOf(Date);
+      expect(sessionsQuerySchema.safeParse({ from: '2026-11-23', to: '2026-11-16' }).success).toBe(false);
+      expect(sessionsQuerySchema.safeParse({ status: 'skipped' }).success).toBe(false);
+      expect(sessionsQuerySchema.safeParse({}).success).toBe(true);
+    });
+  });
 });

@@ -10,6 +10,7 @@ const {
   goalSchema,
   updateGoalSchema,
   listQuerySchema,
+  sessionsQuerySchema,
   idParamsSchema,
   sessionParamsSchema,
   submitQuizSchema,
@@ -31,6 +32,10 @@ router.patch(
   ctrl.updateGoalCtrl,
 );
 router.delete('/goals/:id', validate(idParamsSchema, 'params'), ctrl.removeGoalCtrl);
+
+
+// Sessions view (PLN-01/02): declared before '/:id' so 'sessions' is not read as a plan id.
+router.get('/sessions', validate(sessionsQuerySchema, 'query'), ctrl.listSessionsCtrl);
 
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', validate(createSchema), ctrl.createCtrl);

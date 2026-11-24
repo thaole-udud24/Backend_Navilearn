@@ -76,6 +76,30 @@ async function confirm(id, requester) {
   return withStageStatus(item);
 }
 
+// A planned session whose start has passed counts as missed (same rule as ADP's missedSessions).
+const effectiveStatus = (s, now) => (s.status === 'planned' && s.startAt < now ? 'missed' : s.status);
+
+// UC-PLN-01/02: sessions of the student's active plans, flat and sorted, for calendar and history views.
+// shortcut: not paginated and not filterable by subject; a calendar needs the whole window.
+async function listSessions(ownerId, { from, to, status }, now = new Date()) {
+  const plans = await PlanningItem.find({ owner: ownerId, status: 'active' });
+  return plans
+    .flatMap((p) =>
+      p.sessions.map((s) => ({
+        id: s._id,
+        planId: p._id,
+        planTitle: p.title,
+        concept: s.concept,
+        startAt: s.startAt,
+        durationMin: s.durationMin,
+        status: effectiveStatus(s, now),
+        note: s.note,
+      })),
+    )
+    .filter((s) => (!from || s.startAt >= from) && (!to || s.startAt < to) && (!status || s.status === status))
+    .sort((a, b) => a.startAt - b.startAt);
+}
+
 async function getActive(id, requester) {
   const item = await getOwned(id, requester);
   if (item.status !== 'active') throw ApiError.conflict('Only an active plan can be edited');
@@ -217,6 +241,7 @@ async function removeGoal(id, requester) {
 module.exports = {
   create,
   listForOwner,
+  listSessions,
   getOwned,
   getOwnedForResponse,
   confirm,
