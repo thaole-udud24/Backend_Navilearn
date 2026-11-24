@@ -5,18 +5,52 @@ const PlanningGoal = require('./planning.goal.model');
 const QuestionItem = require('../question-bank/question-bank.model');
 
 const QUIZ_PASS_SCORE = 70;
+
+// Chặng (stage) lock/unlock, derived — never persisted — from the sessions already stored, sorted
+// chronologically: the first session is always open; each later one unlocks once the one before it
+// is resolved (done, cancelled or missed all count — a missed/cancelled session must not permanently
+// block the rest of the roadmap). Returns sessionId -> 'locked' | 'available' | 'completed'.
+function stageStatusMap(sessions) {
+  const ordered = [...sessions].sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+  let previousResolved = true;
+  const map = new Map();
+  for (const s of ordered) {
+    const stageStatus = s.status === 'done' ? 'completed' : previousResolved ? 'available' : 'locked';
+    map.set(String(s._id), stageStatus);
+    previousResolved = s.status !== 'planned';
+  }
+  return map;
+}
+
+// Attaches the derived `stageStatus` to a plan's sessions right before it leaves the service layer —
+// callers that still need to .save() the Mongoose document must do so BEFORE calling this.
+function withStageStatus(item) {
+  const plain = item.toObject ? item.toObject() : item;
+  const statusById = stageStatusMap(plain.sessions ?? []);
+  plain.sessions = (plain.sessions ?? []).map((s) => ({
+    ...s,
+    stageStatus: statusById.get(String(s._id)),
+  }));
+  return plain;
+}
+
 async function create(ownerId, data) {
-  return PlanningItem.create({ owner: ownerId, createdBy: ownerId, ...data });
+  const item = await PlanningItem.create({ owner: ownerId, createdBy: ownerId, ...data });
+  return withStageStatus(item);
 }
 
 async function listForOwner(ownerId, query) {
   const { page, limit, skip } = parsePagination(query);
-  const filter = { owner: ownerId, ...(query.status ? { status: query.status } : {}) };
+  const filter = {
+    owner: ownerId,
+    ...(query.status ? { status: query.status } : {}),
+    ...(query.concept ? { 'sessions.concept': query.concept } : {}),
+  };
   const [items, total] = await Promise.all([
     PlanningItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     PlanningItem.countDocuments(filter),
   ]);
-  return { items, meta: buildMeta(page, limit, total) };
+  return { items: items.map(withStageStatus), meta: buildMeta(page, limit, total) };
 }
 
 // Personal learning data (BR-02/BR-35): owner only, admin gets no access.
@@ -27,6 +61,10 @@ async function getOwned(id, requester) {
   return item;
 }
 
+async function getOwnedForResponse(id, requester) {
+  return withStageStatus(await getOwned(id, requester));
+}
+
 async function confirm(id, requester) {
   const item = await getOwned(id, requester);
   if (item.status !== 'proposed') throw ApiError.conflict('Plan is not awaiting confirmation');
@@ -35,7 +73,7 @@ async function confirm(id, requester) {
   await item.save();
   if (item.replaces)
     await PlanningItem.updateOne({ _id: item.replaces, owner: item.owner }, { status: 'superseded' });
-  return item;
+  return withStageStatus(item);
 }
 
 async function getActive(id, requester) {
@@ -65,7 +103,7 @@ async function addSession(id, requester, data) {
   item.sessions.push(data);
   item.updatedBy = requester.id;
   await item.save();
-  return item;
+  return withStageStatus(item);
 }
 
 async function updateSession(id, sessionId, requester, data) {
@@ -77,6 +115,11 @@ async function updateSession(id, sessionId, requester, data) {
   // UC-PLN-05/06/07: only a scheduled session can be moved, cancelled or completed.
   if ((reschedules || status) && session.status !== 'planned')
     throw ApiError.conflict('Session is not scheduled');
+  // Chặng (stage) gate, enforced server-side, not just hidden in the UI: can't complete a session
+  // whose previous stage is still unresolved.
+  if (status === 'done' && stageStatusMap(item.sessions).get(sessionId) === 'locked') {
+    throw ApiError.conflict('Cần hoàn thành buổi học trước đó', 'STAGE_LOCKED');
+  }
   // UC-PLN-04: notes are for sessions that are done (or being completed in this same request).
   if (note !== undefined && (status || session.status) !== 'done')
     throw ApiError.conflict('Session is not done');
@@ -94,7 +137,7 @@ async function updateSession(id, sessionId, requester, data) {
   Object.assign(session, data);
   item.updatedBy = requester.id;
   await item.save();
-  return item;
+  return withStageStatus(item);
 }
 
 // UC-PLN-TPL-03: grades the session's attached quiz with a simple pass/fail threshold; passing
@@ -104,6 +147,9 @@ async function submitSessionQuiz(id, sessionId, requester, answers) {
   const session = item.sessions.find((s) => String(s._id) === sessionId);
   if (!session) throw ApiError.notFound('Session not found');
   if (!session.questions?.length) throw ApiError.conflict('This session has no quiz attached');
+  if (stageStatusMap(item.sessions).get(sessionId) === 'locked') {
+    throw ApiError.conflict('Cần hoàn thành buổi học trước đó', 'STAGE_LOCKED');
+  }
 
   const questions = await QuestionItem.find({ _id: { $in: session.questions } });
   const correctCount = answers.reduce((count, { questionId, selectedOptionIndex }) => {
@@ -141,7 +187,7 @@ async function createGoal(ownerId, data) {
 
 async function listGoals(ownerId, query) {
   const { page, limit, skip } = parsePagination(query);
-  const filter = { owner: ownerId };
+  const filter = { owner: ownerId, ...(query.concept ? { concept: query.concept } : {}) };
   const [items, total] = await Promise.all([
     PlanningGoal.find(filter).sort({ deadline: 1 }).skip(skip).limit(limit).populate('concept', 'name'),
     PlanningGoal.countDocuments(filter),
@@ -172,6 +218,7 @@ module.exports = {
   create,
   listForOwner,
   getOwned,
+  getOwnedForResponse,
   confirm,
   addSession,
   updateSession,

@@ -25,15 +25,23 @@ describe('planning validation', () => {
     expect(createSchema.parse({ title: 'Week 1' }).sessions).toEqual([]);
     const r = createSchema.safeParse({
       title: 'W',
-      sessions: [{ concept: cid, startAt: '2026-11-10T08:00:00Z', durationMin: 45 }],
+      sessions: [{ concept: cid, startAt: '2026-11-10T08:00:00Z', durationMin: 45, title: 'Buổi 1' }],
     });
     expect(r.success).toBe(true);
   });
 
   it('rejects bad concept id and out-of-range duration', () => {
     const bad = (s) => createSchema.safeParse({ title: 'W', sessions: [s] }).success;
-    expect(bad({ concept: 'x', startAt: '2026-11-10', durationMin: 45 })).toBe(false);
-    expect(bad({ concept: cid, startAt: '2026-11-10', durationMin: 1 })).toBe(false);
+    expect(bad({ concept: 'x', startAt: '2026-11-10', durationMin: 45, title: 'Buổi 1' })).toBe(false);
+    expect(bad({ concept: cid, startAt: '2026-11-10', durationMin: 1, title: 'Buổi 1' })).toBe(false);
+  });
+
+  it('rejects a session with no title', () => {
+    const r = createSchema.safeParse({
+      title: 'W',
+      sessions: [{ concept: cid, startAt: '2026-11-10T08:00:00Z', durationMin: 45 }],
+    });
+    expect(r.success).toBe(false);
   });
 });
 

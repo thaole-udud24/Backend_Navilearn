@@ -10,6 +10,9 @@ const goalSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true, maxlength: 200 },
     deadline: { type: Date, required: true },
     importance: { type: Number, min: 1, max: 5, default: 3 },
+    // Optional numeric target (e.g. "Mastery ≥ 80%") shown alongside the real, measured Mastery
+    // score — student-set aspiration, never confused with the actual score itself.
+    targetScore: { type: Number, min: 0, max: 100, default: null },
   },
   { timestamps: true },
 );
