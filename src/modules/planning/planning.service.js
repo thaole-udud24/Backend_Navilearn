@@ -75,6 +75,13 @@ async function confirm(id, requester) {
     await PlanningItem.updateOne({ _id: item.replaces, owner: item.owner }, { status: 'superseded' });
   return withStageStatus(item);
 }
+// BR-54: chỉ giữ đề xuất chờ xác nhận mới nhất của một plan.
+async function supersedeProposals(ownerId, planId, keepId) {
+  await PlanningItem.updateMany(
+    { owner: ownerId, replaces: planId, status: 'proposed', _id: { $ne: keepId } },
+    { status: 'superseded' },
+  );
+}
 
 // A planned session whose start has passed counts as missed (same rule as ADP's missedSessions).
 const effectiveStatus = (s, now) => (s.status === 'planned' && s.startAt < now ? 'missed' : s.status);
@@ -245,6 +252,7 @@ module.exports = {
   getOwned,
   getOwnedForResponse,
   confirm,
+  supersedeProposals,
   addSession,
   updateSession,
   submitSessionQuiz,
