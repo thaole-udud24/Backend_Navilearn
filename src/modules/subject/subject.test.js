@@ -65,19 +65,19 @@ describe('subject helpers', () => {
 
 describe('subject routes (no database needed)', () => {
   it('requires a token', async () => {
-    const res = await request(app).get('/api/v1/subjects');
+    const res = await request(app).get('/api/v1/subject-items');
     expect(res.status).toBe(401);
   });
 
   it('rejects a malformed subject id with 400 before touching the database', async () => {
-    const res = await request(app).get('/api/v1/subjects/not-an-id').set('Authorization', `Bearer ${tokenFor('student')}`);
+    const res = await request(app).get('/api/v1/subject-items/not-an-id').set('Authorization', `Bearer ${tokenFor('student')}`);
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
   it('rejects an invalid create body', async () => {
     const res = await request(app)
-      .post('/api/v1/subjects')
+      .post('/api/v1/subject-items')
       .set('Authorization', `Bearer ${tokenFor('student')}`)
       .send({ name: '' });
     expect(res.status).toBe(400);
@@ -85,7 +85,7 @@ describe('subject routes (no database needed)', () => {
 
   it('rejects a non-PDF/DOCX upload', async () => {
     const res = await request(app)
-      .post(`/api/v1/subjects/${VALID_ID}/documents`)
+      .post(`/api/v1/subject-items/${VALID_ID}/documents`)
       .set('Authorization', `Bearer ${tokenFor('student')}`)
       .attach('file', Buffer.from('hello'), { filename: 'a.txt', contentType: 'text/plain' });
     expect(res.status).toBe(400);
@@ -94,7 +94,7 @@ describe('subject routes (no database needed)', () => {
 
   it('rejects a file whose content is not really a PDF', async () => {
     const res = await request(app)
-      .post(`/api/v1/subjects/${VALID_ID}/documents`)
+      .post(`/api/v1/subject-items/${VALID_ID}/documents`)
       .set('Authorization', `Bearer ${tokenFor('student')}`)
       .attach('file', Buffer.from('not a pdf at all'), { filename: 'fake.pdf', contentType: 'application/pdf' });
     expect(res.status).toBe(400);
