@@ -18,7 +18,7 @@ const listSessionsCtrl = asyncHandler(async (req, res) => {
 });
 
 const getCtrl = asyncHandler(async (req, res) => {
-  const item = await service.getOwned(req.params.id, req.user);
+  const item = await service.getOwnedForResponse(req.params.id, req.user);
   return ok(res, item);
 });
 

@@ -8,6 +8,14 @@ const sessionSchema = new mongoose.Schema({
   startAt: { type: Date, required: true },
   durationMin: { type: Number, required: true, min: 5, max: 480 },
   status: { type: String, enum: ['planned', 'done', 'missed', 'cancelled'], default: 'planned' },
+  // Stage name (copied from the plan-template step on apply, or set by hand for a manual session).
+  // Optional at the schema level so sessions created before this field existed still read fine.
+  title: { type: String, trim: true, maxlength: 150 },
+  // Chapter grouping copied from the plan-template step on apply — display-only, matches
+  // plan-template.model.js's own stepSchema.chapterTitle comment.
+  chapterTitle: { type: String, trim: true, maxlength: 150, default: '' },
+  // "Sau buổi này bạn có thể…" — copied from the template step, read-only for the student.
+  objectives: { type: [String], default: [], validate: (v) => v.length <= 6 },
   note: { type: String, trim: true, maxlength: 1000 },
   // UC-PLN-TPL-03: carried over from a plan-template step (or set by hand) so a session can be a
   // real mini-lesson — theory to read, then a short quiz before it can be marked done.

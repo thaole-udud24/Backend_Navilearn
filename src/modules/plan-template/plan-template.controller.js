@@ -27,6 +27,16 @@ const removeCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
+const publishCtrl = asyncHandler(async (req, res) => {
+  const item = await service.publish(req.params.id, req.user.id, req.body.changeLog);
+  return ok(res, item, 'Plan template published');
+});
+
+const archiveCtrl = asyncHandler(async (req, res) => {
+  const item = await service.archive(req.params.id, req.user.id);
+  return ok(res, item, 'Plan template archived');
+});
+
 const applyCtrl = asyncHandler(async (req, res) => {
   const plan = await service.apply(req.user.id, req.params.id, req.body.goalId);
   return created(res, plan, 'Plan proposed from template');
@@ -42,4 +52,15 @@ const exportCtrl = asyncHandler(async (req, res) => {
   return ok(res, items);
 });
 
-module.exports = { listCtrl, getCtrl, createCtrl, updateCtrl, removeCtrl, applyCtrl, importCtrl, exportCtrl };
+module.exports = {
+  listCtrl,
+  getCtrl,
+  createCtrl,
+  updateCtrl,
+  removeCtrl,
+  publishCtrl,
+  archiveCtrl,
+  applyCtrl,
+  importCtrl,
+  exportCtrl,
+};

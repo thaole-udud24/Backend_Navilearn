@@ -8,7 +8,15 @@ const stepSchema = new mongoose.Schema(
   {
     dayOffset: { type: Number, required: true, min: 1, max: 60 },
     durationMin: { type: Number, required: true, min: 5, max: 480 },
+    // Stage name shown throughout (Admin builder, student roadmap) — separate from `note`, which
+    // is only a short optional description, so one field doesn't have to serve both purposes.
+    title: { type: String, required: true, trim: true, maxlength: 150 },
+    // Groups steps under a chapter header in the student roadmap UI — purely a display grouping,
+    // never used for unlock/prerequisite logic (that still comes from `questions`/stage order).
+    chapterTitle: { type: String, trim: true, maxlength: 150, default: '' },
     note: { type: String, trim: true, maxlength: 300 },
+    // "Sau buổi này bạn có thể…" — shown to the student once this step is applied into their plan.
+    objectives: { type: [String], default: [], validate: (v) => v.length <= 6 },
     // UC-PLN-TPL-03: a step is a real mini-lesson, not just a label — theory to read, then
     // questions to check understanding before the student can mark it done.
     theoryContent: { type: String, trim: true, maxlength: 8000, default: '' },
@@ -26,7 +34,13 @@ const planTemplateSchema = new mongoose.Schema(
     description: { type: String, trim: true, maxlength: 1000, default: '' },
     concept: { type: mongoose.Schema.Types.ObjectId, ref: 'Concept', default: null },
     steps: { type: [stepSchema], required: true, validate: (v) => v.length > 0 && v.length <= 20 },
-    isActive: { type: Boolean, default: true },
+    // Draft/publish gate (simplified versioning — see plan-template.service.publish): a draft is
+    // never offered to students; publishing bumps `version` and records `changeLog`/`publishedAt`.
+    // There is no immutable per-version history — editing a published template changes it in place.
+    status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
+    version: { type: Number, default: 1 },
+    publishedAt: { type: Date, default: null },
+    changeLog: { type: String, trim: true, maxlength: 500, default: '' },
     source: { type: String, enum: ['manual', 'ai', 'import'], default: 'manual' },
   },
   { timestamps: true },
@@ -34,6 +48,6 @@ const planTemplateSchema = new mongoose.Schema(
 
 planTemplateSchema.plugin(softDeletePlugin);
 planTemplateSchema.plugin(auditPlugin);
-planTemplateSchema.index({ isActive: 1, createdAt: -1 });
+planTemplateSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('PlanTemplateItem', planTemplateSchema);

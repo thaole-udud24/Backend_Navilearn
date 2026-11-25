@@ -6,6 +6,9 @@ const sessionSchema = z.object({
   concept: objectId,
   startAt: z.coerce.date(),
   durationMin: z.number().int().min(5).max(480),
+  title: z.string().trim().min(1).max(150),
+  chapterTitle: z.string().trim().max(150).optional(),
+  objectives: z.array(z.string().trim().max(200)).max(6).optional(),
   theoryContent: z.string().trim().max(8000).optional(),
   questions: z.array(objectId).max(20).optional(),
 });
@@ -27,6 +30,7 @@ const goalSchema = z.object({
   title: z.string().min(1).max(200),
   deadline: z.coerce.date().refine((d) => d > new Date(), 'Deadline must be in the future'),
   importance: z.number().int().min(1).max(5).optional(),
+  targetScore: z.number().min(0).max(100).optional(),
 });
 
 const updateGoalSchema = goalSchema.partial().refine((o) => Object.keys(o).length > 0, 'No fields to update');
@@ -35,6 +39,8 @@ const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
   status: z.enum(['proposed', 'active', 'superseded']).optional(),
+  // Plans: matches any session's concept. Goals: matches the goal's own concept.
+  concept: objectId.optional(),
 });
 
 // UC-PLN-01/02: calendar window (from inclusive, to exclusive) and/or history by status.

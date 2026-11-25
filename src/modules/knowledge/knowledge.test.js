@@ -10,7 +10,12 @@ describe('knowledge module', () => {
   });
 });
 
-jest.mock('./knowledge.model', () => ({ find: jest.fn(), countDocuments: jest.fn(), findById: jest.fn() }));
+jest.mock('./knowledge.model', () => ({
+  find: jest.fn(),
+  countDocuments: jest.fn(),
+  findById: jest.fn(),
+  findOne: jest.fn(),
+}));
 
 // A thenable mongoose-query-like stub: every chained call (sort/skip/limit/select/populate)
 // returns itself, resolving to `result` when awaited — matches how the service now chains
@@ -77,5 +82,57 @@ describe('knowledge update()', () => {
     await expect(update('c1', 'admin1', { prerequisites: ['missing-id'] })).rejects.toMatchObject({
       code: 'INVALID_RELATION',
     });
+  });
+
+  it('rejects a prerequisite cycle (A -> B -> A)', async () => {
+    // c1 already depends on c2; setting c1's prerequisites to [c2] where c2 already depends on c1
+    // (transitively) must be rejected, not just a direct self-reference.
+    Concept.countDocuments.mockResolvedValue(1);
+    Concept.findById.mockImplementation((cursorId) => {
+      if (cursorId === 'c2') return queryStub({ prerequisites: ['c1'] });
+      return queryStub({ name: 'x', save: jest.fn() });
+    });
+    await expect(update('c1', 'admin1', { prerequisites: ['c2'] })).rejects.toMatchObject({
+      code: 'PREREQUISITE_CYCLE',
+    });
+  });
+});
+
+describe('knowledge getSubjectGraph()', () => {
+  const Concept = require('./knowledge.model');
+  const { getSubjectGraph } = require('./knowledge.service');
+
+  it('404s when the subject does not exist (or is not top-level)', async () => {
+    Concept.findOne.mockReturnValue(queryStub(null));
+    await expect(getSubjectGraph('missing')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('returns only leaf concepts, even across chapters, never the chapters/topics themselves', async () => {
+    // S -> C1 -> K1, K2 (K2 prereq K1); S -> C2 -> K3 (prereq K1, cross-chapter)
+    Concept.findOne.mockReturnValue(queryStub({ _id: 'S' }));
+    Concept.find
+      // BFS step 1: children of S
+      .mockReturnValueOnce(queryStub([{ _id: 'C1' }, { _id: 'C2' }]))
+      // BFS step 2: children of C1/C2
+      .mockReturnValueOnce(
+        queryStub([{ _id: 'K1' }, { _id: 'K2' }, { _id: 'K3' }]),
+      )
+      // BFS step 3: children of K1/K2/K3 — none, leaves
+      .mockReturnValueOnce(queryStub([]))
+      // parentConcept lookup across the whole subtree
+      .mockReturnValueOnce(
+        queryStub([
+          { parentConcept: 'S' },
+          { parentConcept: 'S' },
+          { parentConcept: 'C1' },
+          { parentConcept: 'C1' },
+          { parentConcept: 'C2' },
+        ]),
+      )
+      // final leaf fetch
+      .mockReturnValueOnce(queryStub([{ _id: 'K1' }, { _id: 'K2' }, { _id: 'K3' }]));
+
+    const result = await getSubjectGraph('S');
+    expect(result.map((c) => c._id)).toEqual(['K1', 'K2', 'K3']);
   });
 });
