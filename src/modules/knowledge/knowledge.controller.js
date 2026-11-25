@@ -1,6 +1,7 @@
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, noContent } = require('../../utils/response');
 const service = require('./knowledge.service');
+const templates = require('./knowledge.template.service');
 
 const createCtrl = asyncHandler(async (req, res) => {
   const item = await service.create(req.user.id, req.body);
@@ -47,7 +48,25 @@ const subjectGraphCtrl = asyncHandler(async (req, res) => {
   return ok(res, items);
 });
 
+// ---- admin: sample structures ----
+const validateStructureCtrl = asyncHandler(async (req, res) =>
+  ok(res, await templates.validateStructure(req.params.id)),
+);
+const copyStructureCtrl = asyncHandler(async (req, res) =>
+  created(res, await templates.copyStructure(req.user.id, req.params.id, req.body), 'Đã sao chép cấu trúc mẫu'),
+);
+const deactivateStructureCtrl = asyncHandler(async (req, res) =>
+  ok(res, await templates.setStructureStatus(req.user.id, req.params.id, 'archived'), 'Đã ngừng sử dụng cấu trúc mẫu'),
+);
+const restoreStructureCtrl = asyncHandler(async (req, res) =>
+  ok(res, await templates.setStructureStatus(req.user.id, req.params.id, 'active'), 'Đã khôi phục cấu trúc mẫu'),
+);
+
 module.exports = {
+  validateStructureCtrl,
+  copyStructureCtrl,
+  deactivateStructureCtrl,
+  restoreStructureCtrl,
   createCtrl,
   listCtrl,
   getCtrl,
