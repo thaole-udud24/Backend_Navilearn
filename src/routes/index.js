@@ -14,6 +14,7 @@ const businessRuleRoutes = require('../modules/business-rule/business-rule.route
 const dataRetentionRoutes = require('../modules/data-retention/data-retention.routes');
 const flashcardRoutes = require('../modules/flashcard/flashcard.routes');
 const knowledgeRoutes = require('../modules/knowledge/knowledge.routes');
+const myKnowledgeRoutes = require('../modules/knowledge/knowledge.personal.routes');
 const lessonRoutes = require('../modules/lesson/lesson.routes');
 const monitoringRoutes = require('../modules/monitoring/monitoring.routes');
 const masteryRoutes = require('../modules/mastery/mastery.routes');
@@ -52,6 +53,7 @@ router.use('/business-rule-items', businessRuleRoutes);
 router.use('/data-retention-items', dataRetentionRoutes);
 router.use('/flashcard-deck-items', flashcardRoutes);
 router.use('/knowledge-items', knowledgeRoutes);
+router.use('/my-knowledge', myKnowledgeRoutes);
 router.use('/lesson-items', lessonRoutes);
 router.use('/monitoring-items', monitoringRoutes);
 router.use('/mastery-items', masteryRoutes);
