@@ -44,6 +44,7 @@ describe('adaptive priority (BR-40)', () => {
 });
 jest.mock('../mastery/mastery.service');
 jest.mock('../planning/planning.service');
+jest.mock('../account/account.me.service');
 jest.mock('./adaptive.model');
 
 describe('next best action (AP-ADP-01)', () => {
@@ -104,9 +105,11 @@ describe('next best action (AP-ADP-01)', () => {
 describe('replan (AP-ADP-03)', () => {
   const masteryService = require('../mastery/mastery.service');
   const planningService = require('../planning/planning.service');
+  const accountMeService = require('../account/account.me.service');
   const service = require('./adaptive.service');
-  const now = new Date('2026-11-10T00:00:00Z');
+  const now = new Date('2026-11-10T00:00:00Z'); // thứ Ba
   const at = (iso) => new Date(iso);
+  const days = { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0, sat: 0, sun: 0 };
   const plan = (sessions, status = 'active') => ({ _id: 'p1', title: 'W1', status, sessions });
 
   beforeEach(() => {
@@ -117,7 +120,9 @@ describe('replan (AP-ADP-03)', () => {
       ],
     });
     planningService.listGoals.mockResolvedValue({ items: [] });
-    planningService.create.mockImplementation(async (_owner, data) => data);
+    planningService.create.mockImplementation(async (_owner, data) => ({ ...data, _id: 'new1' }));
+    accountMeService.getProfile.mockResolvedValue({ availability: days });
+
   });
 
   it('rejects a plan that is not active or has nothing missed', async () => {
@@ -147,6 +152,40 @@ describe('replan (AP-ADP-03)', () => {
     ]);
     expect(reason).toBeTruthy();
     expect(proposed.reason).toBe(reason);
+  });
+  it('keeps session content, supersedes the older proposal of the same plan (BR-54)', async () => {
+    const content = { title: 'Buổi 1', theoryContent: 'lý thuyết', questions: ['q1'], quizPassed: true };
+    planningService.getOwned.mockResolvedValue(
+      plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'planned', ...content }]),
+    );
+    const { plan: proposed } = await service.replan('u1', 'p1', now);
+    expect(proposed.sessions[0]).toMatchObject(content);
+    expect(planningService.supersedeProposals).toHaveBeenCalledWith('u1', 'p1', 'new1');
+  });
+
+  it('only uses days with enough available minutes (BR-11)', async () => {
+    accountMeService.getProfile.mockResolvedValue({ availability: { ...days, tue: 60 } });
+    planningService.getOwned.mockResolvedValue(
+      plan([
+        { concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'planned' },
+        { concept: 'c2', startAt: at('2026-11-12T09:30:00Z'), durationMin: 45, status: 'planned' },
+      ]),
+    );
+    const { plan: proposed } = await service.replan('u1', 'p1', now);
+    expect(proposed.sessions.map((s) => s.startAt.toISOString())).toEqual([
+      '2026-11-17T09:30:00.000Z',
+      '2026-11-24T08:00:00.000Z',
+    ]);
+  });
+
+  it('409 when no day can hold a session', async () => {
+    accountMeService.getProfile.mockResolvedValue({ availability: { ...days, mon: 10 } });
+    planningService.getOwned.mockResolvedValue(
+      plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'planned' }]),
+    );
+    planningService.create.mockClear();
+    await expect(service.replan('u1', 'p1', now)).rejects.toMatchObject({ status: 409 });
+    expect(planningService.create).not.toHaveBeenCalled();
   });
   it('ignores cancelled sessions: not counted as missed, not rescheduled', async () => {
     planningService.getOwned.mockResolvedValue(
