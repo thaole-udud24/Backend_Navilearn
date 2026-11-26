@@ -21,6 +21,7 @@ function stageStatusMap(sessions) {
   }
   return map;
 }
+const REMINDER_AFTER_MS = 5 * 60 * 1000; // BR-54: sau 5 phút chưa phản hồi thì nhắc xác nhận
 
 // Attaches the derived `stageStatus` to a plan's sessions right before it leaves the service layer —
 // callers that still need to .save() the Mongoose document must do so BEFORE calling this.
@@ -31,6 +32,9 @@ function withStageStatus(item) {
     ...s,
     stageStatus: statusById.get(String(s._id)),
   }));
+  // BR-54: đề xuất chờ quá 5 phút thì FE hiện nhắc xác nhận; kế hoạch hiện hành vẫn được áp dụng (BR-37).
+  plain.confirmReminder = plain.status === 'proposed' && Date.now() - new Date(plain.createdAt) >= REMINDER_AFTER_MS;
+
   return plain;
 }
 
@@ -74,6 +78,23 @@ async function confirm(id, requester) {
   if (item.replaces)
     await PlanningItem.updateOne({ _id: item.replaces, owner: item.owner }, { status: 'superseded' });
   return withStageStatus(item);
+}
+// UC-PLN-10 AF1: ghi nhận từ chối đề xuất; kế hoạch hiện hành (item.replaces) giữ nguyên (BR-37).
+async function reject(id, requester) {
+  const item = await getOwned(id, requester);
+  if (item.status !== 'proposed') throw ApiError.conflict('Plan is not awaiting confirmation');
+  item.status = 'rejected';
+  item.updatedBy = requester.id;
+  await item.save();
+  return withStageStatus(item);
+}
+
+// BR-54: chỉ giữ đề xuất chờ xác nhận mới nhất của một plan.
+async function supersedeProposals(ownerId, planId, keepId) {
+  await PlanningItem.updateMany(
+    { owner: ownerId, replaces: planId, status: 'proposed', _id: { $ne: keepId } },
+    { status: 'superseded' },
+  );
 }
 
 // A planned session whose start has passed counts as missed (same rule as ADP's missedSessions).
@@ -245,6 +266,8 @@ module.exports = {
   getOwned,
   getOwnedForResponse,
   confirm,
+  reject,
+  supersedeProposals,
   addSession,
   updateSession,
   submitSessionQuiz,

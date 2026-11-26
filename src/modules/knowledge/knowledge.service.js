@@ -5,6 +5,8 @@ const Concept = require('./knowledge.model');
 const { ROLES } = require('../../shared/roles');
 const { createSchema } = require('./knowledge.validation');
 
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // A concept cannot relate to itself, and the hierarchy (parent) must stay a tree — never a cycle a
 // tree-rendering UI could spin on forever. Academic relations (prerequisites/related) are checked
 // for existence only: they're a DAG across the whole bank, not just this concept's own subtree.
@@ -85,6 +87,7 @@ async function list(query, requester) {
   if (query.parentConcept !== undefined) {
     filter.parentConcept = query.parentConcept === 'null' ? null : query.parentConcept;
   }
+  if (query.q) filter.name = { $regex: escapeRegex(query.q), $options: 'i' };
   // `find()` auto-excludes soft-deleted docs (see softDelete.plugin's pre(/^find/) hook), but that
   // hook never fires for countDocuments — without this, the "Tổng số" badge would still count
   // every soft-deleted Concept forever.

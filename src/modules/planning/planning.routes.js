@@ -41,6 +41,8 @@ router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', validate(createSchema), ctrl.createCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
 router.patch('/:id/confirm', validate(idParamsSchema, 'params'), ctrl.confirmCtrl);
+router.patch('/:id/reject', validate(idParamsSchema, 'params'), ctrl.rejectCtrl);
+
 router.post(
   '/:id/sessions',
   validate(idParamsSchema, 'params'),

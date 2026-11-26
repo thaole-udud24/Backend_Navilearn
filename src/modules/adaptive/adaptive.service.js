@@ -1,8 +1,11 @@
 const ApiError = require('../../utils/ApiError');
 const masteryService = require('../mastery/mastery.service');
 const planningService = require('../planning/planning.service');
+const accountMeService = require('../account/account.me.service');
 const AdaptiveActivity = require('./adaptive.model');
 const { rankActivities, computePriority, buildActivity, explain } = require('./adaptive.priority');
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const MAX_SEARCH_DAYS = 60;
 
 const FIRST_PAGE = { limit: '100' }; // shortcut: only the first 100 mastery records / goals are considered
 
@@ -66,6 +69,16 @@ const unfinished = (plan) => plan.sessions.filter((s) => s.status !== 'done' && 
 const missedSessions = (plan, now) =>
   unfinished(plan).filter((s) => s.status === 'missed' || s.startAt < now);
 
+// BR-11: không xếp phiên vào ngày có số phút khả dụng nhỏ hơn thời lượng phiên.
+// shortcut: availability toàn 0 coi như chưa đặt (không giới hạn); mỗi ngày tối đa một phiên.
+function firstFittingDay(from, durationMin, availability) {
+  const unlimited = !Object.values(availability).some((m) => m > 0);
+  const day = new Date(from);
+  for (let i = 0; i < MAX_SEARCH_DAYS; i += 1, day.setUTCDate(day.getUTCDate() + 1)) {
+    if (unlimited || availability[WEEKDAYS[day.getUTCDay()]] >= durationMin) return day;
+  }
+  throw ApiError.conflict('Available study time is too short to reschedule the remaining sessions');
+}
 // AP-ADP-02: does this plan need replanning? shortcut: only missed sessions are detected;
 // poor results and study-time changes need event data that does not exist yet.
 async function checkReplan(ownerId, planId, now = new Date()) {
@@ -76,7 +89,7 @@ async function checkReplan(ownerId, planId, now = new Date()) {
 
 // AP-ADP-03: re-rank the unfinished sessions of a plan by BR-40 priority (BR-13) and propose a new plan.
 // The old plan stays active until the student confirms the proposal (BR-37/BR-54).
-// shortcut: no study-time data yet (BR-11), so the cap is one session per day starting tomorrow, at each session's original time of day.
+// Phiên giữ nguyên nội dung và giờ trong ngày ban đầu, mỗi ngày một phiên, bắt đầu từ ngày mai.
 async function replan(ownerId, planId, now = new Date()) {
   const plan = await getActivePlan(ownerId, planId);
   const missed = missedSessions(plan, now);
@@ -86,17 +99,24 @@ async function replan(ownerId, planId, now = new Date()) {
   const priorityOf = (s) =>
     computePriority(byId.get(String(s.concept)) || buildActivity({ id: String(s.concept) }, now));
 
+  const { availability } = await accountMeService.getProfile(ownerId);
+  let cursor = new Date(now);
+  cursor.setUTCDate(cursor.getUTCDate() + 1);
+
   const sessions = pending
     .map((s) => ({ s, p: priorityOf(s) }))
     .sort((x, y) => y.p - x.p)
-    .map(({ s }, i) => {
-      const startAt = new Date(now);
-      startAt.setUTCDate(startAt.getUTCDate() + i + 1);
+    .map(({ s }) => {
+      const startAt = firstFittingDay(cursor, s.durationMin, availability);
+      cursor = new Date(startAt);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
       startAt.setUTCHours(s.startAt.getUTCHours(), s.startAt.getUTCMinutes(), 0, 0);
-      return { concept: s.concept, startAt, durationMin: s.durationMin };
+      const { concept, durationMin, title, chapterTitle, objectives, theoryContent, questions, quizPassed } = s;
+      return { concept, startAt, durationMin, title, chapterTitle, objectives, theoryContent, questions, quizPassed };
+
     });
 
-  const reason = `${missed.length} phiên bị bỏ lỡ; ${sessions.length} phiên chưa học được xếp lại theo mức ưu tiên, mỗi ngày một phiên, bắt đầu từ ngày mai`;
+  const reason = `${missed.length} phiên bị bỏ lỡ; ${sessions.length} phiên chưa học được xếp lại theo mức ưu tiên, mỗi ngày một phiên trong thời gian khả dụng, bắt đầu từ ngày mai`;
   const proposed = await planningService.create(ownerId, {
     title: `${plan.title} (điều chỉnh)`,
     status: 'proposed',
@@ -104,6 +124,9 @@ async function replan(ownerId, planId, now = new Date()) {
     reason,
     sessions,
   });  
+  // BR-54: đề xuất mới thay thế đề xuất đang chờ của cùng plan, không để chồng chất.
+  await planningService.supersedeProposals(ownerId, plan._id, proposed._id);
+
   return { plan: proposed, reason };
 }
 

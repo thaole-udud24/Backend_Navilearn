@@ -30,7 +30,7 @@ const planSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true, maxlength: 200 },
-    status: { type: String, enum: ['proposed', 'active', 'superseded'], default: 'active' },
+    status: { type: String, enum: ['proposed', 'active', 'superseded', 'rejected'], default: 'active' },
     replaces: { type: mongoose.Schema.Types.ObjectId, ref: 'PlanningItem', default: null },
     reason: { type: String, trim: true, maxlength: 500 }, // why ADP proposed this plan (UC-ADP-03)
 
