@@ -26,6 +26,10 @@ const confirmCtrl = asyncHandler(async (req, res) => {
   const item = await service.confirm(req.params.id, req.user);
   return ok(res, item, 'Plan confirmed');
 });
+const rejectCtrl = asyncHandler(async (req, res) => {
+  const item = await service.reject(req.params.id, req.user);
+  return ok(res, item, 'Plan rejected');
+});
 
 const removeCtrl = asyncHandler(async (req, res) => {
   await service.remove(req.params.id, req.user);
@@ -88,6 +92,7 @@ module.exports = {
   listSessionsCtrl,
   getCtrl,
   confirmCtrl,
+  rejectCtrl,
   addSessionCtrl,
   updateSessionCtrl,
   submitSessionQuizCtrl,

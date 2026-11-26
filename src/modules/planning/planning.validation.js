@@ -38,7 +38,7 @@ const updateGoalSchema = goalSchema.partial().refine((o) => Object.keys(o).lengt
 const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
-  status: z.enum(['proposed', 'active', 'superseded']).optional(),
+  status: z.enum(['proposed', 'active', 'superseded', 'rejected']).optional(),
   // Plans: matches any session's concept. Goals: matches the goal's own concept.
   concept: objectId.optional(),
 });
