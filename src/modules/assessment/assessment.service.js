@@ -246,6 +246,7 @@ async function submit(id, requesterId, answers) {
   const masteryItem = await masteryService.upsertForAttempt(requesterId, attempt.concept, attempt.score, 'initial_grading', {
     independentCheck: attempt.independentCheck,
     evidenceType: config.kind,
+    aiLevel: attempt.aiHelpLevel,
   });
   if (config.kind === 'placement') {
     await masteryService.initializeFromPlacement(requesterId, [
@@ -447,6 +448,7 @@ async function regradeAffected(questionId, actorId) {
     // eslint-disable-next-line no-await-in-loop
     await masteryService.upsertForAttempt(attempt.owner, attempt.concept, score, 'regrade', {
       evidenceType: config.kind,
+      aiLevel: attempt.aiHelpLevel,
     });
     results.push({ assessment: attempt._id, newScore: score });
   }
