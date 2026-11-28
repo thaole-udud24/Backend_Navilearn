@@ -38,6 +38,8 @@ const router = express.Router();
 
 router.use(authenticate);
 router.get('/profile', ctrl.getProfileCtrl);
+router.get('/streak', ctrl.getStreakCtrl);
+router.get('/badges', ctrl.getBadgesCtrl);
 router.patch('/profile', validate(v.updateProfileSchema), ctrl.updateProfileCtrl);
 router.post('/avatar', uploadAvatar, ctrl.avatarCtrl);
 router.post('/change-password', validate(v.changePasswordSchema), ctrl.changePasswordCtrl);

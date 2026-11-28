@@ -21,6 +21,14 @@ const toProfile = (user) => ({
     sat: user.availability?.sat ?? 0,
     sun: user.availability?.sun ?? 0,
   },
+  // N14 "Nhắc học" defaults.
+  notificationHour: user.notificationHour ?? 20,
+  defaultRestDays: user.defaultRestDays || [],
+  streak: {
+    current: user.streak?.current ?? 0,
+    longest: user.streak?.longest ?? 0,
+    lastActiveDate: user.streak?.lastActiveDate ?? null,
+  },
   createdAt: user.createdAt,
 });
 

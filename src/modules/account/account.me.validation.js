@@ -20,6 +20,9 @@ const updateProfileSchema = z
         sun: minutes,
       })
       .partial(),
+    // N14 "Nhắc học": giờ nhắc + ngày nghỉ mặc định.
+    notificationHour: z.number().int().min(0).max(23),
+    defaultRestDays: z.array(z.number().int().min(0).max(6)).max(7),
   })
   .partial();
 

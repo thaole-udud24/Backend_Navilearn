@@ -10,6 +10,7 @@ const { toProfile } = require('./account.public');
 const { assertPassword } = require('./account.password.policy');
 const { revokeAllSessions } = require('./account.session.service');
 const { purgeUserData } = require('./account.purge');
+const cloudinary = require('../../integrations/cloudinary');
 
 const AVATAR_DIR = path.resolve(env.STORAGE_UPLOAD_DIR, 'avatars');
 
@@ -26,7 +27,7 @@ async function getProfile(userId) {
 /** BIZ-ACC-01. Email is not editable here: BR-56 only allows changing it through verification. */
 async function updateProfile(userId, data) {
   const user = await loadUser(userId);
-  ['fullName', 'locale', 'timezone', 'learningGoal'].forEach((key) => {
+  ['fullName', 'locale', 'timezone', 'learningGoal', 'notificationHour', 'defaultRestDays'].forEach((key) => {
     if (data[key] !== undefined) user[key] = data[key];
   });
   if (data.availability) {
@@ -48,7 +49,9 @@ async function setAvatar(userId, file) {
   if (!file) throw ApiError.badRequest('Vui lòng chọn ảnh (png, jpg, webp)', 'FILE_REQUIRED');
   const user = await loadUser(userId);
   const previous = user.avatarUrl;
-  user.avatarUrl = `/uploads/avatars/${file.filename}`;
+  const localPath = file.path || path.join(AVATAR_DIR, file.filename);
+  const cloudUrl = await cloudinary.uploadImageFile(localPath, 'navilearn/avatars', file.mimetype);
+  user.avatarUrl = cloudUrl || `/uploads/avatars/${file.filename}`;
   await user.save();
   removeLocalAvatar(previous);
   return toProfile(user);
@@ -111,6 +114,69 @@ async function deleteAccount(userId, { password }) {
   await user.deleteOne();
 }
 
+function toDayString(date = new Date()) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+// v2.1 §5.9: Chuỗi ngày học (Streak)
+async function getStreak(userId, now = new Date()) {
+  const user = await loadUser(userId);
+  const today = toDayString(now);
+  const yesterday = toDayString(new Date(now.getTime() - 86400000));
+  const last = user.streak?.lastActiveDate ?? null;
+  const rawCurrent = user.streak?.current ?? 0;
+  // If student missed yesterday and hasn't studied today, current streak has reset to 0.
+  const current = last === today || last === yesterday ? rawCurrent : 0;
+  return {
+    current,
+    longest: user.streak?.longest ?? 0,
+    lastActiveDate: last,
+    activeToday: last === today,
+  };
+}
+
+const STREAK_BADGES = [
+  { code: 'STREAK_3', name: 'Khởi động bền bỉ', thresholdDays: 3 },
+  { code: 'STREAK_7', name: 'Tuần lễ vàng', thresholdDays: 7 },
+  { code: 'STREAK_14', name: 'Thói quen thép', thresholdDays: 14 },
+  { code: 'STREAK_30', name: 'Bậc thầy kỷ luật', thresholdDays: 30 },
+];
+
+async function recordStudyActivity(userId, now = new Date()) {
+  const user = await User.findById(userId);
+  if (!user) return null;
+  const today = toDayString(now);
+  const yesterday = toDayString(new Date(now.getTime() - 86400000));
+  const prev = user.streak || { current: 0, longest: 0, lastActiveDate: null };
+  let current = prev.current ?? 0;
+  let longest = prev.longest ?? 0;
+  if (prev.lastActiveDate !== today) {
+    current = prev.lastActiveDate === yesterday ? (prev.current || 0) + 1 : 1;
+    longest = Math.max(prev.longest || 0, current);
+    user.streak = { current, longest, lastActiveDate: today };
+  }
+  const existing = new Set((user.badges || []).map((b) => b.code));
+  const newlyEarned = STREAK_BADGES.filter((b) => current >= b.thresholdDays && !existing.has(b.code));
+  if (newlyEarned.length > 0) {
+    user.badges = [
+      ...(user.badges || []),
+      ...newlyEarned.map((b) => ({ ...b, earnedAt: now })),
+    ];
+  }
+  if (prev.lastActiveDate !== today || newlyEarned.length > 0) {
+    await user.save();
+  }
+  return { current, longest, lastActiveDate: today, activeToday: true, newlyEarned };
+}
+
+async function getBadges(userId) {
+  const user = await loadUser(userId);
+  return {
+    earned: user.badges || [],
+    catalog: STREAK_BADGES,
+  };
+}
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -120,5 +186,9 @@ module.exports = {
   revokeSession,
   revokeOtherSessions,
   deleteAccount,
+  getStreak,
+  recordStudyActivity,
+  getBadges,
+  STREAK_BADGES,
   AVATAR_DIR,
 };
