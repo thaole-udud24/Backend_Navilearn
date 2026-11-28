@@ -42,8 +42,24 @@ const generateTemplateCtrl = asyncHandler(async (req, res) => {
   return ok(res, draft, 'Plan template draft generated');
 });
 
+const adminOverviewCtrl = asyncHandler(async (req, res) => {
+  const overview = await service.adminOverview();
+  return ok(res, overview);
+});
+
+// A5 "Review Workspace".
+const listQuestionDraftsCtrl = asyncHandler(async (req, res) => {
+  const drafts = await service.listQuestionDrafts(req.query);
+  return ok(res, drafts);
+});
+
+const rejectQuestionDraftCtrl = asyncHandler(async (req, res) => {
+  await service.rejectQuestionDraft(req.params.id, req.user.id);
+  return noContent(res);
+});
+
 const listCtrl = asyncHandler(async (req, res) => {
-  const { items, meta } = await service.list(req.user.id, req.query);
+  const { items, meta } = await service.list(req.user.id, req.query, req.user);
   return ok(res, items, 'OK', meta);
 });
 
@@ -68,6 +84,9 @@ const reportCtrl = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  adminOverviewCtrl,
+  listQuestionDraftsCtrl,
+  rejectQuestionDraftCtrl,
   generateQuestionCtrl,
   practiceQuestionCtrl,
   askCtrl,

@@ -8,6 +8,7 @@ const generateQuestionSchema = z.object({
 const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
+  subjectId: z.string().optional(),
   kind: z
     .enum([
       'generate_question',
