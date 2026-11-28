@@ -3,6 +3,8 @@ const { z } = require('zod');
 const createSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1).max(2000),
+  issueType: z.enum(['question_error', 'display_bug', 'system_error', 'other']).optional(),
+  location: z.string().max(300).optional(),
 });
 
 const updateStatusSchema = z.object({
@@ -17,4 +19,7 @@ const listQuerySchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
-module.exports = { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema };
+// B10: admin reply sent back to the reporting student.
+const respondSchema = z.object({ message: z.string().min(1).max(2000) });
+
+module.exports = { createSchema, updateStatusSchema, listQuerySchema, idParamsSchema, respondSchema };

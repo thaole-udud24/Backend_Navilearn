@@ -1,6 +1,7 @@
 jest.mock('./lesson.model');
 jest.mock('../knowledge/knowledge.model');
 jest.mock('../question-bank/question-bank.model');
+jest.mock('../knowledge/knowledge.service');
 
 describe('lesson validation', () => {
   const { createSchema } = require('./lesson.validation');
@@ -53,5 +54,19 @@ describe('lesson service', () => {
     LessonItem.findById.mockReturnValue({ populate: () => item });
     await service.publish('l1', 'admin1');
     expect(item.status).toBe('published');
+  });
+
+  it('list filters by the whole concept subtree, not an exact match (picker reuse case)', async () => {
+    const knowledgeService = require('../knowledge/knowledge.service');
+    knowledgeService.getDescendantIds.mockResolvedValue([cid, 'leaf1', 'leaf2']);
+    LessonItem.find.mockReturnValue({
+      sort: () => ({ skip: () => ({ limit: () => ({ populate: () => [] }) }) }),
+    });
+    LessonItem.countDocuments.mockResolvedValue(0);
+
+    await service.list({ concept: cid });
+
+    expect(knowledgeService.getDescendantIds).toHaveBeenCalledWith(cid);
+    expect(LessonItem.find).toHaveBeenCalledWith({ concept: { $in: [cid, 'leaf1', 'leaf2'] } });
   });
 });

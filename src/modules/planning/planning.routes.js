@@ -11,9 +11,15 @@ const {
   updateGoalSchema,
   listQuerySchema,
   sessionsQuerySchema,
+  dailyQuerySchema,
+  dailyRangeQuerySchema,
   idParamsSchema,
   sessionParamsSchema,
   submitQuizSchema,
+  draftGoalSchema,
+  activateGoalSchema,
+  pauseGoalSchema,
+  closeGoalSchema,
 } = require('./planning.validation');
 const ctrl = require('./planning.controller');
 
@@ -22,6 +28,29 @@ const router = express.Router();
 // Personal learning data (BR-02/BR-35): student-only, admin has no access.
 router.use(authenticate, authorize(ROLES.STUDENT));
 // Goals (PLN-03): declared before '/:id' so '/goals' is not read as a plan id.
+// Draft wizard routes declared before '/goals/:id' so 'draft' isn't read as a goal id.
+router.post('/goals/draft', validate(draftGoalSchema), ctrl.saveDraftGoalCtrl);
+router.get('/goals/draft', ctrl.getOpenDraftCtrl);
+router.post(
+  '/goals/:id/activate',
+  validate(idParamsSchema, 'params'),
+  validate(activateGoalSchema),
+  ctrl.activateGoalCtrl,
+);
+router.patch(
+  '/goals/:id/pause',
+  validate(idParamsSchema, 'params'),
+  validate(pauseGoalSchema),
+  ctrl.pauseGoalCtrl,
+);
+router.patch('/goals/:id/resume', validate(idParamsSchema, 'params'), ctrl.resumeGoalCtrl);
+router.patch(
+  '/goals/:id/close',
+  validate(idParamsSchema, 'params'),
+  validate(closeGoalSchema),
+  ctrl.closeGoalCtrl,
+);
+router.patch('/goals/:id/archive', validate(idParamsSchema, 'params'), ctrl.archiveGoalCtrl);
 router.post('/goals', validate(goalSchema), ctrl.createGoalCtrl);
 router.get('/goals', validate(listQuerySchema, 'query'), ctrl.listGoalsCtrl);
 router.get('/goals/:id', validate(idParamsSchema, 'params'), ctrl.getGoalCtrl);
@@ -36,6 +65,11 @@ router.delete('/goals/:id', validate(idParamsSchema, 'params'), ctrl.removeGoalC
 
 // Sessions view (PLN-01/02): declared before '/:id' so 'sessions' is not read as a plan id.
 router.get('/sessions', validate(sessionsQuerySchema, 'query'), ctrl.listSessionsCtrl);
+
+// "Kế hoạch ngày" (B8 "Hôm nay"), declared before '/:id' for the same reason as '/sessions'.
+router.get('/today', ctrl.getDailyPlanCtrl);
+router.get('/daily', validate(dailyQuerySchema, 'query'), ctrl.getDailyPlanCtrl);
+router.get('/daily-range', validate(dailyRangeQuerySchema, 'query'), ctrl.getDailyPlanRangeCtrl);
 
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', validate(createSchema), ctrl.createCtrl);

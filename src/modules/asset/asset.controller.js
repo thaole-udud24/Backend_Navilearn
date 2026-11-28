@@ -4,7 +4,7 @@ const { ok, created, noContent } = require('../../utils/response');
 const service = require('./asset.service');
 
 const listCtrl = asyncHandler(async (req, res) => {
-  const { items, meta } = await service.list(req.query);
+  const { items, meta } = await service.list(req.query, req.user);
   return ok(res, items, 'OK', meta);
 });
 
@@ -24,4 +24,14 @@ const removeCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
-module.exports = { listCtrl, getCtrl, createCtrl, removeCtrl };
+const updateCtrl = asyncHandler(async (req, res) => {
+  const item = await service.update(req.params.id, req.user.id, req.body);
+  return ok(res, item, 'Đã cập nhật tài liệu');
+});
+
+const importCtrl = asyncHandler(async (req, res) => {
+  const report = await service.bulkImport(req.user.id, req.files, req.body);
+  return ok(res, report, 'Đã xử lý nhập hàng loạt');
+});
+
+module.exports = { listCtrl, getCtrl, createCtrl, removeCtrl, updateCtrl, importCtrl };

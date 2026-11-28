@@ -4,7 +4,7 @@ const service = require('./mastery.service');
 const dashboardService = require('./mastery.dashboard.service');
 
 const listCtrl = asyncHandler(async (req, res) => {
-  const { items, meta } = await service.listForOwner(req.user.id, req.query);
+  const { items, meta } = await service.listForOwner(req.user.id, req.query, req.user);
   return ok(res, items, 'OK', meta);
 });
 

@@ -3,6 +3,7 @@ const { parsePagination, buildMeta } = require('../../utils/pagination');
 const LessonItem = require('./lesson.model');
 const Concept = require('../knowledge/knowledge.model');
 const QuestionItem = require('../question-bank/question-bank.model');
+const { getDescendantIds } = require('../knowledge/knowledge.service');
 
 async function assertConceptExists(conceptId) {
   const exists = await Concept.exists({ _id: conceptId });
@@ -25,8 +26,11 @@ async function assertQuestionsBelongToConcept(conceptId, questionIds) {
 
 async function list(query) {
   const { page, limit, skip } = parsePagination(query);
+  // Match the concept's whole subtree (e.g. a root "môn học"), not just an exact id — lessons are
+  // authored at leaf concepts, so an exact match would hide every lesson from a root-scoped picker
+  // (same bug class as plan-template's assertStepQuestionsValid, see E2E_Audit_Report_Phase2.md).
   const filter = {
-    ...(query.concept ? { concept: query.concept } : {}),
+    ...(query.concept ? { concept: { $in: await getDescendantIds(query.concept) } } : {}),
     ...(query.status ? { status: query.status } : {}),
   };
   const [items, total] = await Promise.all([

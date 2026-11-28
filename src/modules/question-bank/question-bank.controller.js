@@ -1,5 +1,6 @@
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, noContent } = require('../../utils/response');
+const { record } = require('../../shared/audit-log');
 const service = require('./question-bank.service');
 
 const createCtrl = asyncHandler(async (req, res) => {
@@ -39,11 +40,23 @@ const removeCtrl = asyncHandler(async (req, res) => {
 
 const importCtrl = asyncHandler(async (req, res) => {
   const report = await service.importBulk(req.user.id, req.body.items);
+  await record({
+    actorId: req.user.id,
+    action: 'question_bank.import',
+    targetType: 'QuestionItem',
+    meta: { createdCount: report.createdCount, errorCount: report.errorCount },
+  });
   return ok(res, report, 'Import finished');
 });
 
 const exportCtrl = asyncHandler(async (req, res) => {
   const items = await service.exportAll(req.query, req.user);
+  await record({
+    actorId: req.user.id,
+    action: 'question_bank.export',
+    targetType: 'QuestionItem',
+    meta: { count: items.length },
+  });
   return ok(res, items);
 });
 
@@ -65,6 +78,11 @@ const listIssueReportsCtrl = asyncHandler(async (req, res) => {
 const resolveIssueReportCtrl = asyncHandler(async (req, res) => {
   const report = await service.resolveIssueReport(req.params.id, req.user.id, req.body);
   return ok(res, report, 'Issue report resolved');
+});
+
+const replyIssueReportCtrl = asyncHandler(async (req, res) => {
+  const report = await service.replyToIssueReport(req.params.id, req.user.id, req.body.message);
+  return ok(res, report, 'Reply sent');
 });
 
 const qualityStatsCtrl = asyncHandler(async (req, res) => {
@@ -101,6 +119,7 @@ module.exports = {
   reportIssueCtrl,
   listIssueReportsCtrl,
   resolveIssueReportCtrl,
+  replyIssueReportCtrl,
   qualityStatsCtrl,
   duplicatesCtrl,
   regradeImpactCtrl,

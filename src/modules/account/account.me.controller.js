@@ -34,6 +34,10 @@ const deleteAccountCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
+const getStreakCtrl = asyncHandler(async (req, res) => ok(res, await service.getStreak(req.user.id)));
+
+const getBadgesCtrl = asyncHandler(async (req, res) => ok(res, await service.getBadges(req.user.id)));
+
 module.exports = {
   getProfileCtrl,
   updateProfileCtrl,
@@ -43,4 +47,6 @@ module.exports = {
   revokeSessionCtrl,
   revokeOtherSessionsCtrl,
   deleteAccountCtrl,
+  getStreakCtrl,
+  getBadgesCtrl,
 };

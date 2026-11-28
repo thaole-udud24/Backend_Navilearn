@@ -53,10 +53,49 @@ async function listForOwner(ownerId, query) {
   return { items, meta: buildMeta(page, limit, total) };
 }
 
+// Non-paginated list for the Global Subject Filter dropdown (excludes soft-deleted by default plugin).
+async function listAllForOwner(ownerId) {
+  return StudentSubjectItem.find({ owner: ownerId })
+    .sort({ pinned: -1, displayOrder: 1, createdAt: -1 })
+    .populate('concept', 'name description status');
+}
+
+// "Đã xóa gần đây" (ST-01 restore): soft-deleted items, newest first. The softDelete plugin excludes
+// deletedAt:null-only queries by default, so `deletedAt: { $ne: null }` opts back in explicitly.
+async function listTrash(ownerId, query) {
+  const { page, limit, skip } = parsePagination(query);
+  const filter = { owner: ownerId, deletedAt: { $ne: null } };
+  const [items, total] = await Promise.all([
+    StudentSubjectItem.find(filter)
+      .sort({ deletedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('concept', 'name description'),
+    StudentSubjectItem.countDocuments(filter),
+  ]);
+  return { items, meta: buildMeta(page, limit, total) };
+}
+
 async function getOwned(id, requester) {
   const item = await StudentSubjectItem.findById(id);
   if (!item) throw ApiError.notFound('Subject not found');
   if (String(item.owner) !== String(requester.id)) throw ApiError.forbidden('Not the owner of this subject');
+  return item;
+}
+
+// Soft-deleted items are excluded by the default find(), so look them up with deletedAt unset explicitly.
+async function getOwnedDeleted(id, requester) {
+  const item = await StudentSubjectItem.findOne({ _id: id, deletedAt: { $ne: null } });
+  if (!item) throw ApiError.notFound('Subject not found');
+  if (String(item.owner) !== String(requester.id)) throw ApiError.forbidden('Not the owner of this subject');
+  return item;
+}
+
+async function restore(id, requester) {
+  const item = await getOwnedDeleted(id, requester);
+  item.deletedAt = null;
+  item.updatedBy = requester.id;
+  await item.save();
   return item;
 }
 
@@ -72,4 +111,4 @@ async function remove(id, requester) {
   await item.softDelete();
 }
 
-module.exports = { create, listForOwner, getOwned, update, remove };
+module.exports = { create, listForOwner, listAllForOwner, listTrash, getOwned, update, remove, restore };

@@ -1,5 +1,6 @@
 const ApiError = require('../../utils/ApiError');
 const { parsePagination, buildMeta } = require('../../utils/pagination');
+const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
 const { FlashcardDeckItem, FlashcardItem } = require('./flashcard.model');
 const Concept = require('../knowledge/knowledge.model');
 
@@ -8,12 +9,19 @@ async function assertConceptExists(conceptId) {
   if (!exists) throw ApiError.badRequest('Concept not found', 'CONCEPT_NOT_FOUND');
 }
 
-async function listDecks(query) {
+async function listDecks(query, requester) {
   const { page, limit, skip } = parsePagination(query);
+  const subjectIds = await resolveSubjectConceptIds(query.subjectId, requester);
   const filter = {
-    ...(query.concept ? { concept: query.concept } : {}),
     ...(query.status ? { status: query.status } : {}),
   };
+  if (query.concept && subjectIds) {
+    filter.concept = subjectIds.some((id) => String(id) === String(query.concept)) ? query.concept : null;
+  } else if (query.concept) {
+    filter.concept = query.concept;
+  } else if (subjectIds) {
+    filter.concept = { $in: subjectIds };
+  }
   const [items, total] = await Promise.all([
     FlashcardDeckItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('concept', 'name'),
     FlashcardDeckItem.countDocuments(filter),

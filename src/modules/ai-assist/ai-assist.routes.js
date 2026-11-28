@@ -63,6 +63,20 @@ router.post(
 );
 router.post('/generate-plan', authorize(ROLES.STUDENT), validate(generatePlanSchema), ctrl.generatePlanCtrl);
 
+// B6 "Giám sát" (admin-only ops overview): placed before '/:id' only for readability — the two
+// path segments never collide with that single-segment param route.
+router.get('/admin/overview', authorize(ROLES.ADMIN), ctrl.adminOverviewCtrl);
+
+// A5 "Review Workspace": pending AI-generated question drafts + reject action. Placed before '/:id'
+// for the same reason as '/admin/overview' above.
+router.get('/admin/question-drafts', authorize(ROLES.ADMIN), validate(listQuerySchema, 'query'), ctrl.listQuestionDraftsCtrl);
+router.post(
+  '/admin/question-drafts/:id/reject',
+  authorize(ROLES.ADMIN),
+  validate(idParamsSchema, 'params'),
+  ctrl.rejectQuestionDraftCtrl,
+);
+
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
 router.delete('/:id', authorize(ROLES.STUDENT), validate(idParamsSchema, 'params'), ctrl.removeCtrl);

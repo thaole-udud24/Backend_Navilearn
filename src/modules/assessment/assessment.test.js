@@ -33,12 +33,14 @@ jest.mock('./assessment.model');
 jest.mock('../assessment-config/assessment-config.model');
 jest.mock('../question-bank/question-bank.model');
 jest.mock('../mastery/mastery.service');
+jest.mock('../wrong-item/wrong-item.service');
 
 describe('submit() (security/correctness)', () => {
   const AssessmentItem = require('./assessment.model');
   const AssessmentConfigItem = require('../assessment-config/assessment-config.model');
   const QuestionItem = require('../question-bank/question-bank.model');
   const masteryService = require('../mastery/mastery.service');
+  const wrongItemService = require('../wrong-item/wrong-item.service');
   const { submit } = require('./assessment.service');
 
   const baseAttempt = () => ({
@@ -58,7 +60,10 @@ describe('submit() (security/correctness)', () => {
     QuestionItem.find.mockResolvedValue([
       { _id: 'q1', points: 10, type: 'mcq', options: [{ isCorrect: false }, { isCorrect: true }] },
     ]);
-    masteryService.upsertForAttempt.mockResolvedValue(undefined);
+    masteryService.findRaw.mockResolvedValue({ score: 40 });
+    masteryService.upsertForAttempt.mockResolvedValue({ score: 55 });
+    wrongItemService.recordWrong.mockResolvedValue(undefined);
+    wrongItemService.markMastered.mockResolvedValue(undefined);
   });
 
   it('throws a clean 404 instead of crashing when the config was deleted mid-attempt', async () => {
@@ -79,5 +84,61 @@ describe('submit() (security/correctness)', () => {
     ]);
     expect(result.answers).toHaveLength(1);
     expect(result.score).toBe(0);
+  });
+
+  // S12 "Mastery (đo được)": real before→after snapshot, not derived/faked on the client.
+  it('snapshots the concept Mastery score before/after the attempt (S12)', async () => {
+    AssessmentConfigItem.findById.mockResolvedValue({ questions: ['q1'], passScore: 50, kind: 'practice' });
+    const result = await submit('a1', 'owner1', [{ question: 'q1', selectedOptionIndex: 1 }]);
+    expect(result.masteryBefore).toBe(40);
+    expect(result.masteryAfter).toBe(55);
+  });
+});
+
+// N2: Sổ câu sai partial-selection retry — scopes the attempt to exactly the checked rows instead
+// of every open item for the concept.
+describe('startRetryFromWrongItems (N2 partial selection)', () => {
+  const AssessmentItem = require('./assessment.model');
+  const AssessmentConfigItem = require('../assessment-config/assessment-config.model');
+  const wrongItemService = require('../wrong-item/wrong-item.service');
+  const { startRetryFromWrongItems } = require('./assessment.service');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    AssessmentConfigItem.findOne.mockResolvedValue({ _id: 'cfg1' });
+    AssessmentItem.create.mockImplementation((doc) => Promise.resolve(doc));
+  });
+
+  it('attempts only the selected wrongItemIds question ids, not every open item for the concept', async () => {
+    wrongItemService.getQuestionIdsForRetry.mockResolvedValue({ concept: 'c1', questionIds: ['q2'] });
+    // The concept has 3 open items; the student only checked 1 (q2) in the table.
+    wrongItemService.buildRetryQuestionIds.mockResolvedValue(['q1', 'q2', 'q3']);
+
+    const attempt = await startRetryFromWrongItems('owner1', undefined, ['wi2']);
+
+    expect(wrongItemService.getQuestionIdsForRetry).toHaveBeenCalledWith('owner1', ['wi2']);
+    expect(attempt.concept).toBe('c1');
+    expect(attempt.questionsOverride).toEqual(['q2']);
+  });
+
+  it('falls back to every open item for the concept when no wrongItemIds are given (back-compat)', async () => {
+    wrongItemService.buildRetryQuestionIds.mockResolvedValue(['q1', 'q2', 'q3']);
+
+    const attempt = await startRetryFromWrongItems('owner1', 'c1', undefined);
+
+    expect(wrongItemService.getQuestionIdsForRetry).not.toHaveBeenCalled();
+    expect(attempt.questionsOverride).toEqual(['q1', 'q2', 'q3']);
+  });
+
+  it('rejects when the selected wrongItemIds span more than one concept', async () => {
+    wrongItemService.getQuestionIdsForRetry.mockRejectedValue(
+      Object.assign(new Error('Chỉ có thể chọn các câu cùng một kiến thức trong một lượt luyện lại'), {
+        status: 400,
+      }),
+    );
+
+    await expect(startRetryFromWrongItems('owner1', undefined, ['wi1', 'wi2'])).rejects.toMatchObject({
+      status: 400,
+    });
   });
 });

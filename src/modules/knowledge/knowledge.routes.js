@@ -10,6 +10,7 @@ const {
   listQuerySchema,
   idParamsSchema,
   importSchema,
+  copyStructureSchema,
 } = require('./knowledge.validation');
 const ctrl = require('./knowledge.controller');
 
@@ -36,6 +37,17 @@ router.patch(
   validate(updateStatusSchema),
   ctrl.updateStatusCtrl,
 );
+// Sample structures (a top-level concept and everything below it): admin tools.
+router.get('/:id/validate', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.validateStructureCtrl);
+router.post(
+  '/:id/copy',
+  authorize(ROLES.ADMIN),
+  validate(idParamsSchema, 'params'),
+  validate(copyStructureSchema),
+  ctrl.copyStructureCtrl,
+);
+router.post('/:id/deactivate-tree', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.deactivateStructureCtrl);
+router.post('/:id/restore-tree', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.restoreStructureCtrl);
 router.delete('/:id', authorize(ROLES.ADMIN), validate(idParamsSchema, 'params'), ctrl.removeCtrl);
 
 module.exports = router;

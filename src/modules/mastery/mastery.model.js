@@ -11,6 +11,14 @@ const historyEntrySchema = new mongoose.Schema(
       enum: ['initial_grading', 'regrade', 'placement_init', 'content_completed'],
       required: true,
     },
+    // BR-38 evidence weights: w_loại_bài needs the assessment kind, w_mức_AI needs the AI help
+    // level (0-4) for that attempt. Absent on non-evidence entries (content_completed).
+    evidenceType: {
+      type: String,
+      enum: ['placement', 'practice', 'chapter_test', 'mock_exam', 'independent_check'],
+      default: undefined,
+    },
+    aiLevel: { type: Number, min: 0, max: 4, default: 0 },
     at: { type: Date, default: Date.now },
   },
   { _id: false },

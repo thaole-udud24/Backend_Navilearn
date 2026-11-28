@@ -2,13 +2,16 @@ const mongoose = require('mongoose');
 const ApiError = require('../../utils/ApiError');
 const { parsePagination, buildMeta } = require('../../utils/pagination');
 const ai = require('../../integrations/ai');
+const env = require('../../config/env');
 const AiAssistItem = require('./ai-assist.model');
 const Concept = require('../knowledge/knowledge.model');
+const knowledgeService = require('../knowledge/knowledge.service');
 const AssessmentItem = require('../assessment/assessment.model');
 const QuestionItem = require('../question-bank/question-bank.model');
 const assessmentConfigService = require('../assessment-config/assessment-config.service');
 const masteryService = require('../mastery/mastery.service');
 const planningService = require('../planning/planning.service');
+const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
@@ -105,7 +108,12 @@ async function gradeEssay(ownerId, { conceptId, referenceAnswer, studentText }) 
       ? await assessmentConfigService.findActiveRubricForConcept(conceptId)
       : null;
   const rubricText = rubric
-    ? `\nGrade against this rubric:\n${rubric.criteria.map((c) => `- ${c.name} (max ${c.maxPoints}): ${c.description}`).join('\n')}`
+    ? `\nGrade against this rubric (total ${rubric.totalPoints} points):\n${rubric.criteria
+        .map(
+          (c) =>
+            `- ${c.name} (${c.weightPct}%, max ${assessmentConfigService.criterionPoints(rubric, c)} points): ${c.description}`,
+        )
+        .join('\n')}`
     : '';
   const prompt = `Grade this student answer against the reference answer and give short feedback.\nReference: ${referenceAnswer}\nStudent: ${studentText}${rubricText}`;
   const { answer: feedback } = await ai.ask(prompt);
@@ -302,19 +310,30 @@ async function generateTemplateDraft(ownerId, { topic, conceptId, sessionCount =
   };
 }
 
-const PLAN_SESSION_LINE = /^DAY:\s*(\d+)\s*\|\s*DURATION:\s*(\d+)\s*\|\s*NOTE:\s*(.+)$/i;
+// `CONCEPT:` is optional in the line so a plain 3-field response (no leaf list was offered, or the
+// AI ignored the extra field) still parses — see generateStudyPlan below.
+const PLAN_SESSION_LINE =
+  /^DAY:\s*(\d+)\s*\|\s*DURATION:\s*(\d+)\s*(?:\|\s*CONCEPT:\s*(\S+)\s*)?\|\s*NOTE:\s*(.+)$/i;
 
-function parseGeneratedSessions(raw) {
+// `validLeafIds`, when given, is the exact set of real descendant leaf Concept ids the AI was
+// offered — a `CONCEPT:` tag is only trusted (kept, otherwise `null`) when it is one of those ids,
+// never a bare well-formed-looking ObjectId the model invented (UC-PLN-AI-01 real-leaf-concept fix).
+function parseGeneratedSessions(raw, validLeafIds) {
+  const leafSet = validLeafIds ? new Set(Array.from(validLeafIds, String)) : null;
   return String(raw || '')
     .split('\n')
     .map((l) => l.trim())
     .map((l) => l.match(PLAN_SESSION_LINE))
     .filter(Boolean)
-    .map((m) => ({
-      dayOffset: Math.min(60, Math.max(1, Number(m[1]))),
-      durationMin: Math.min(180, Math.max(15, Number(m[2]))),
-      note: m[3].trim().slice(0, 300),
-    }));
+    .map((m) => {
+      const tagged = m[3] && /^[a-f\d]{24}$/i.test(m[3]) ? m[3] : null;
+      return {
+        dayOffset: Math.min(60, Math.max(1, Number(m[1]))),
+        durationMin: Math.min(180, Math.max(15, Number(m[2]))),
+        concept: tagged && (!leafSet || leafSet.has(tagged)) ? tagged : null,
+        note: m[4].trim().slice(0, 300),
+      };
+    });
 }
 
 // UC-PLN-AI-01: student turns a goal into a concrete proposed study plan (BR-12 personalization);
@@ -328,14 +347,30 @@ async function generateStudyPlan(ownerId, goalId) {
   const sessionCount = Math.min(6, Math.max(2, Math.round(daysLeft / 3)));
   const personalization = await buildPersonalizationContext(ownerId, goal.concept);
 
+  // UC-PLN-AI-01 real-leaf-concept fix: this generator has no real content references (lesson/
+  // question ids) to pull a leaf Concept from like the template path does, so the only real data
+  // available is the subject's own 4-level knowledge tree — offer the AI the goal subject's actual
+  // leaf Concepts and ask it to tag each session with one; the tag is validated against this exact
+  // list below (never trusted blindly). A step it doesn't/can't tag keeps the root subject concept,
+  // same as before — never a faked leaf. shortcut: capped at 40 leaves so the prompt stays bounded
+  // for very large subjects.
+  const leafIds = await knowledgeService.getDescendantLeafIds(goal.concept);
+  const leaves = leafIds.length ? await Concept.find({ _id: { $in: leafIds } }, 'name').limit(40) : [];
+  const leafListLine = leaves.length
+    ? `\nDanh sách kiến thức cụ thể của môn (chọn đúng 1 ID phù hợp nhất cho mỗi buổi):\n${leaves
+        .map((c) => `${c._id} | ${c.name}`)
+        .join('\n')}\n`
+    : '';
+  const conceptFieldFormat = leaves.length ? ' | CONCEPT: <ID kiến thức phù hợp nhất ở trên>' : '';
+
   const prompt =
     `Tạo lộ trình học gồm đúng ${sessionCount} buổi để đạt mục tiêu "${goal.title}" cho chủ đề "${concept.name}" trong ${daysLeft} ngày tới.\n` +
-    `${personalization}\n` +
+    `${personalization}${leafListLine}\n` +
     'Trả lời CHÍNH XÁC theo định dạng này, mỗi buổi một dòng, không thêm chữ nào khác:\n' +
-    'DAY: <số ngày kể từ hôm nay, 1-60> | DURATION: <phút, 15-120> | NOTE: <hoạt động ngắn bằng tiếng Việt>';
+    `DAY: <số ngày kể từ hôm nay, 1-60> | DURATION: <phút, 15-120>${conceptFieldFormat} | NOTE: <hoạt động ngắn bằng tiếng Việt>`;
 
   const { answer } = await ai.ask(prompt);
-  let parsed = parseGeneratedSessions(answer);
+  let parsed = parseGeneratedSessions(answer, leafIds);
   const valid = parsed.length > 0;
 
   // shortcut: AI trả sai định dạng -> chia đều buổi học còn lại, để luồng không bị kẹt.
@@ -343,20 +378,24 @@ async function generateStudyPlan(ownerId, goalId) {
     parsed = Array.from({ length: sessionCount }, (_, i) => ({
       dayOffset: Math.max(1, Math.round(((i + 1) * daysLeft) / sessionCount)),
       durationMin: 30,
+      concept: null,
       note: `Ôn tập ${concept.name}`,
     }));
   }
 
-  const sessions = parsed.map(({ dayOffset, durationMin, note }) => {
+  const sessions = parsed.map(({ dayOffset, durationMin, note, concept: leafConcept }) => {
     const startAt = new Date();
     startAt.setDate(startAt.getDate() + dayOffset);
     startAt.setHours(19, 0, 0, 0);
-    return { concept: goal.concept, startAt, durationMin, note };
+    // Real leaf concept when the AI validly tagged one; otherwise fall back to the goal's own root
+    // subject concept, exactly as before.
+    return { concept: leafConcept || goal.concept, startAt, durationMin, note };
   });
 
   const plan = await planningService.create(ownerId, {
     title: `Lộ trình AI: ${goal.title}`,
     status: 'proposed',
+    goal: goalId,
     sessions,
   });
 
@@ -372,9 +411,67 @@ async function generateStudyPlan(ownerId, goalId) {
   return { plan, valid };
 }
 
-async function list(ownerId, query) {
+function normalizeDraftText(text) {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// A5 "Review Workspace": just-generated, not-yet-approved 'generate_question' drafts, each with the
+// real flags that exist for it — `valid` is the actual UC-AP-AIA-04 format check (re-derived from the
+// stored raw response, same parser used at generation time), `possibleDuplicate` is a live exact-text
+// match against the active bank for the same concept (same heuristic as question-bank's UC-QBK-13
+// findDuplicates). No fabricated duplicate percentage — only this boolean, honestly computed.
+async function listQuestionDrafts({ limit = 50 } = {}) {
+  const drafts = await AiAssistItem.find({ kind: 'generate_question', approvedQuestion: null })
+    .sort({ createdAt: -1 })
+    .limit(Math.max(1, Math.min(Number(limit) || 50, 200)))
+    .populate('owner', 'fullName email')
+    .populate('concept', 'name');
+
+  const activeTextsByConcept = new Map();
+  for (const draft of drafts) {
+    const conceptId = draft.concept ? String(draft.concept._id ?? draft.concept) : null;
+    if (!conceptId || activeTextsByConcept.has(conceptId)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const actives = await QuestionItem.find({ status: 'active', concept: conceptId }).select('text');
+    activeTextsByConcept.set(conceptId, new Set(actives.map((q) => normalizeDraftText(q.text))));
+  }
+
+  return drafts.map((draft) => {
+    const { valid, text, options } = validateGeneratedQuestionShape(draft.response);
+    const conceptId = draft.concept ? String(draft.concept._id ?? draft.concept) : null;
+    const possibleDuplicate = Boolean(
+      text && conceptId && activeTextsByConcept.get(conceptId)?.has(normalizeDraftText(text)),
+    );
+    return {
+      aiAssistLogId: draft.id,
+      owner: draft.owner,
+      concept: draft.concept,
+      createdAt: draft.createdAt,
+      valid,
+      possibleDuplicate,
+      text,
+      options,
+    };
+  });
+}
+
+// Admin rejects a draft from the Review Workspace: soft-deletes the log (same mechanism
+// removeOwned uses for a student's own log) so it drops out of the pending queue for good.
+async function rejectQuestionDraft(id, adminId) {
+  const log = await AiAssistItem.findById(id);
+  if (!log || log.kind !== 'generate_question') throw ApiError.notFound('Question draft not found');
+  log.updatedBy = adminId;
+  await log.softDelete();
+}
+
+async function list(ownerId, query, requester) {
   const { page, limit, skip } = parsePagination(query);
-  const filter = { owner: ownerId, ...(query.kind ? { kind: query.kind } : {}) };
+  const subjectIds = await resolveSubjectConceptIds(query.subjectId, requester);
+  const filter = {
+    owner: ownerId,
+    ...(query.kind ? { kind: query.kind } : {}),
+    ...(subjectIds ? { concept: { $in: subjectIds } } : {}),
+  };
   const [items, total] = await Promise.all([
     AiAssistItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     AiAssistItem.countDocuments(filter),
@@ -414,7 +511,46 @@ async function report(id, requesterId, { reason }) {
   return item;
 }
 
+const DB_STATES = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+
+// B6 "Giám sát" (admin-only): real operational data only — no invented queue/latency metrics.
+// AiAssistItem is this codebase's one real async-task log (closest thing to the business doc's
+// 3.0.2 ai_request concept); it has no duration/error field, so status is derived honestly from
+// `valid` (format check passed) and `reported` (student flagged the answer), not fabricated.
+async function adminOverview() {
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [totalLast24h, invalidLast24h, reportedLast24h, recent] = await Promise.all([
+    AiAssistItem.countDocuments({ createdAt: { $gte: since24h } }),
+    AiAssistItem.countDocuments({ createdAt: { $gte: since24h }, valid: false }),
+    AiAssistItem.countDocuments({ createdAt: { $gte: since24h }, reported: true }),
+    AiAssistItem.find({})
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('owner', 'fullName email')
+      .populate('concept', 'name'),
+  ]);
+
+  return {
+    health: {
+      dbConnected: mongoose.connection.readyState === 1,
+      dbState: DB_STATES[mongoose.connection.readyState] || 'unknown',
+      uptimeSec: Math.round(process.uptime()),
+    },
+    // express-rate-limit keeps per-IP counters in-memory with no public read API, so this reports
+    // the real configured policy (not a fabricated "remaining quota" gauge).
+    rateLimit: {
+      scope: 'auth (đăng ký/đăng nhập/quên mật khẩu...)',
+      windowMs: env.RATE_LIMIT_WINDOW_MS,
+      max: env.RATE_LIMIT_MAX,
+    },
+    aiRequests: { totalLast24h, invalidLast24h, reportedLast24h, recent },
+  };
+}
+
 module.exports = {
+  adminOverview,
+  listQuestionDrafts,
+  rejectQuestionDraft,
   validateGeneratedQuestionShape,
   parseGeneratedSessions,
   buildPersonalizationContext,

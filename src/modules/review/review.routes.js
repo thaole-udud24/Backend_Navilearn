@@ -11,6 +11,8 @@ const router = express.Router();
 router.use(authenticate);
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', authorize(ROLES.STUDENT), validate(createSchema), ctrl.createCtrl);
+// Literal path before '/:id' so it isn't swallowed by the id param route. B11: admin stat tiles.
+router.get('/stats', authorize(ROLES.ADMIN), ctrl.statsCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
 router.patch(
   '/:id/status',

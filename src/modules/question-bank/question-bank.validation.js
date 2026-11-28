@@ -41,6 +41,7 @@ const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
   concept: z.string().optional(),
+  subjectId: z.string().optional(),
   type: z.enum(['mcq', 'true_false', 'essay']).optional(),
   difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   status: z.enum(['active', 'archived']).optional(),
@@ -94,6 +95,8 @@ const resolveIssueReportSchema = z.object({
   resolution: z.string().max(1000).optional(),
 });
 
+const replyIssueReportSchema = z.object({ message: z.string().min(1).max(1000) });
+
 const qualityStatsQuerySchema = z.object({ concept: z.string().optional() });
 
 const duplicatesQuerySchema = z.object({ concept: z.string().optional() });
@@ -110,6 +113,7 @@ module.exports = {
   reportIssueSchema,
   issueReportListQuerySchema,
   resolveIssueReportSchema,
+  replyIssueReportSchema,
   qualityStatsQuerySchema,
   duplicatesQuerySchema,
 };

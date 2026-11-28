@@ -96,6 +96,24 @@ describe('auth routes validation (no database needed)', () => {
   });
 });
 
+// N14 "Nhắc học": giờ nhắc + ngày nghỉ mặc định, both optional (student-level DEFAULTS only).
+describe('updateProfileSchema (N14 notificationHour/defaultRestDays)', () => {
+  const { updateProfileSchema } = require('./account.me.validation');
+
+  it('accepts a valid notificationHour and defaultRestDays', () => {
+    const result = updateProfileSchema.safeParse({ notificationHour: 21, defaultRestDays: [0, 6] });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an out-of-range notificationHour', () => {
+    expect(updateProfileSchema.safeParse({ notificationHour: 24 }).success).toBe(false);
+  });
+
+  it('rejects a defaultRestDays value outside 0-6', () => {
+    expect(updateProfileSchema.safeParse({ defaultRestDays: [7] }).success).toBe(false);
+  });
+});
+
 describe('access control', () => {
   const tokenFor = (role) =>
     jwt.sign({ sub: '64b000000000000000000001', role, sid: 'x' }, process.env.JWT_ACCESS_SECRET);

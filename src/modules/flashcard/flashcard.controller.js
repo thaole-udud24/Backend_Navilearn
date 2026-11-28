@@ -3,7 +3,7 @@ const { ok, created, noContent } = require('../../utils/response');
 const service = require('./flashcard.service');
 
 const listDecksCtrl = asyncHandler(async (req, res) => {
-  const { items, meta } = await service.listDecks(req.query);
+  const { items, meta } = await service.listDecks(req.query, req.user);
   return ok(res, items, 'OK', meta);
 });
 

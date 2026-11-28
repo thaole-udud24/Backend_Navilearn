@@ -11,6 +11,9 @@ const stepSchema = z.object({
   objectives: z.array(z.string().trim().max(200)).max(6).optional(),
   theoryContent: z.string().trim().max(8000).optional(),
   questions: z.array(objectId).max(20).optional(),
+  // When set, objectives/theoryContent/questions above are overwritten server-side with a snapshot
+  // of the referenced (published) lesson — see plan-template.service.applyLessonSnapshots.
+  lessonId: objectId.optional().nullable(),
 });
 
 const createSchema = z.object({
@@ -28,9 +31,12 @@ const listQuerySchema = z.object({
   limit: z.string().optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
   concept: objectId.optional(),
+  subjectId: objectId.optional(),
 });
 
 const idParamsSchema = z.object({ id: objectId });
+
+const stepLessonParamsSchema = z.object({ id: objectId, stepIndex: z.coerce.number().int().min(0) });
 
 const applySchema = z.object({
   goalId: objectId.optional(),
@@ -49,6 +55,7 @@ module.exports = {
   updateSchema,
   listQuerySchema,
   idParamsSchema,
+  stepLessonParamsSchema,
   applySchema,
   publishSchema,
   importSchema,

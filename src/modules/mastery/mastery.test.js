@@ -1,4 +1,9 @@
-const { deriveLevel, nextLearningStateForAttempt, computeDisplayState } = require('./mastery.service');
+const {
+  deriveLevel,
+  nextLearningStateForAttempt,
+  computeDisplayState,
+  computeWeightedScore,
+} = require('./mastery.service');
 
 describe('mastery module', () => {
   it('derives level thresholds correctly with the default cut points', () => {
@@ -61,6 +66,41 @@ describe('upsertForAttempt (BR-38: no level from a single attempt)', () => {
   });
 });
 
+describe('computeWeightedScore (BR-38: w = w_loại_bài × w_mức_AI × w_thời_gian)', () => {
+  it('weighs a chapter_test evidence more than a practice evidence of the same score', () => {
+    const now = new Date();
+    const practiceOnly = computeWeightedScore([
+      { score: 80, evidenceType: 'practice', aiLevel: 0, at: now, reason: 'initial_grading' },
+      { score: 40, evidenceType: 'chapter_test', aiLevel: 0, at: now, reason: 'initial_grading' },
+    ]);
+    const chapterHeavier = computeWeightedScore([
+      { score: 40, evidenceType: 'practice', aiLevel: 0, at: now, reason: 'initial_grading' },
+      { score: 80, evidenceType: 'chapter_test', aiLevel: 0, at: now, reason: 'initial_grading' },
+    ]);
+    // Same two scores, swapped evidenceType: the one scoring 80 on the heavier type pulls higher.
+    expect(chapterHeavier).toBeGreaterThan(practiceOnly);
+  });
+
+  it('excludes content_completed entries (no tỷ lệ đúng) from the average', () => {
+    const now = new Date();
+    const score = computeWeightedScore([
+      { score: 70, evidenceType: 'practice', aiLevel: 0, at: now, reason: 'initial_grading' },
+      { score: 0, reason: 'content_completed', at: now },
+    ]);
+    expect(score).toBe(70);
+  });
+
+  it('decays older evidence toward less influence (BR-38 w_thời_gian)', () => {
+    const now = new Date();
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const recentHeavy = computeWeightedScore([
+      { score: 90, evidenceType: 'chapter_test', aiLevel: 0, at: now, reason: 'initial_grading' },
+      { score: 10, evidenceType: 'chapter_test', aiLevel: 0, at: sixtyDaysAgo, reason: 'initial_grading' },
+    ]);
+    expect(recentHeavy).toBeGreaterThan(50);
+  });
+});
+
 describe('nextLearningStateForAttempt (BR-39)', () => {
   it('moves LEARNING to PRACTICING on the first practice attempt', () => {
     expect(nextLearningStateForAttempt('LEARNING', { score: 30, evidenceCount: 1 })).toBe('PRACTICING');
@@ -112,5 +152,14 @@ describe('computeDisplayState (BR-39 decay, read-only derivation)', () => {
   it('keeps a healthy PRACTICING state as-is', () => {
     const item = { learningState: 'PRACTICING', score: 80, lastAttemptAt: new Date() };
     expect(computeDisplayState(item)).toBe('PRACTICING');
+  });
+
+  // B14: BR-17-RETENTION-RISK is now Admin-configurable and fed in here instead of the hardcoded
+  // 14-day constant (default stays 14, so the tests above are unaffected).
+  it('accepts a configurable decayDays threshold (B14 wiring)', () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const item = { learningState: 'PRACTICING', score: 80, lastAttemptAt: tenDaysAgo };
+    expect(computeDisplayState(item)).toBe('PRACTICING'); // under the default 14-day threshold
+    expect(computeDisplayState(item, 7)).toBe('DECAY_RISK'); // a stricter Admin threshold catches it
   });
 });

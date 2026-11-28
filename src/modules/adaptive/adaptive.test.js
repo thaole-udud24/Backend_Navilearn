@@ -44,6 +44,7 @@ describe('adaptive priority (BR-40)', () => {
 });
 jest.mock('../mastery/mastery.service');
 jest.mock('../planning/planning.service');
+jest.mock('../notification/notification.service');
 jest.mock('./adaptive.model');
 
 describe('next best action (AP-ADP-01)', () => {
@@ -104,6 +105,7 @@ describe('next best action (AP-ADP-01)', () => {
 describe('replan (AP-ADP-03)', () => {
   const masteryService = require('../mastery/mastery.service');
   const planningService = require('../planning/planning.service');
+  const notificationService = require('../notification/notification.service');
   const service = require('./adaptive.service');
   const now = new Date('2026-11-10T00:00:00Z');
   const at = (iso) => new Date(iso);
@@ -148,6 +150,37 @@ describe('replan (AP-ADP-03)', () => {
     expect(reason).toBeTruthy();
     expect(proposed.reason).toBe(reason);
   });
+
+  // N13: a replan proposal is a real, meaningful event to notify the student about (BR-13/UC-ADP-03).
+  it('creates a real "hoc_tap" notification for the student when a plan is replanned', async () => {
+    planningService.getOwned.mockResolvedValue(
+      plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'planned' }]),
+    );
+    await service.replan('u1', 'p1', now);
+    expect(notificationService.create).toHaveBeenCalledWith(
+      'u1',
+      expect.objectContaining({ category: 'hoc_tap', link: '/student/goal-roadmap' }),
+    );
+  });
+
+  it('inherits the goal link from the plan it replaces (Plan↔Goal link fix)', async () => {
+    const original = plan([
+      { concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'planned' },
+    ]);
+    original.goal = 'g1';
+    planningService.getOwned.mockResolvedValue(original);
+    const { plan: proposed } = await service.replan('u1', 'p1', now);
+    expect(proposed.goal).toBe('g1');
+  });
+
+  it('inherits a null goal for a legacy plan created before the field existed', async () => {
+    planningService.getOwned.mockResolvedValue(
+      plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'planned' }]),
+    );
+    const { plan: proposed } = await service.replan('u1', 'p1', now);
+    expect(proposed.goal).toBeNull();
+  });
+
   it('ignores cancelled sessions: not counted as missed, not rescheduled', async () => {
     planningService.getOwned.mockResolvedValue(
       plan([{ concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'cancelled' }]),

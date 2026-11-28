@@ -40,4 +40,27 @@ describe('asset service', () => {
     expect(item.status).toBe('removed');
     expect(item.save).toHaveBeenCalled();
   });
+
+  it('create defaults studentVisible to true (D3 — matches the pre-existing de-facto behavior)', async () => {
+    AssetItem.create.mockResolvedValue({ _id: 'a1' });
+    const file = { filename: 'f.pdf', originalname: 'Giao trinh.pdf', mimetype: 'application/pdf', size: 1024 };
+    await service.create('admin1', { title: 'Giáo trình' }, file);
+    expect(AssetItem.create).toHaveBeenCalledWith(expect.objectContaining({ studentVisible: true }));
+  });
+
+  it('list (D3): a student only sees studentVisible assets, an admin sees all', async () => {
+    AssetItem.find.mockReturnValue({
+      sort: () => ({ skip: () => ({ limit: () => ({ populate: () => [] }) }) }),
+    });
+    AssetItem.countDocuments.mockResolvedValue(0);
+
+    await service.list({}, { role: 'student' });
+    expect(AssetItem.find).toHaveBeenCalledWith(expect.objectContaining({ studentVisible: true }));
+
+    AssetItem.find.mockClear();
+    await service.list({}, { role: 'admin' });
+    expect(AssetItem.find).toHaveBeenCalledWith(
+      expect.not.objectContaining({ studentVisible: expect.anything() }),
+    );
+  });
 });

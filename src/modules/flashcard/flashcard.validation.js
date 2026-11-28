@@ -18,6 +18,7 @@ const listDecksQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
   concept: objectId.optional(),
+  subjectId: objectId.optional(),
   status: z.enum(['active', 'archived']).optional(),
 });
 
