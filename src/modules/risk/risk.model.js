@@ -1,20 +1,20 @@
 const mongoose = require('mongoose');
-const softDeletePlugin = require('../../plugins/softDelete.plugin');
-const auditPlugin = require('../../plugins/audit.plugin');
 
-// Risk module (scaffolded from _template; business logic pending per BRD).
-const templateItemSchema = new mongoose.Schema(
+// N9/BR-13: student's response to a system-generated risk warning ("giữ nguyên" / "nhắc tôi sau").
+// Warnings themselves are never stored — they're recomputed live from goals/plans/mastery each time
+// (see risk.service.listWarnings) — this collection only remembers which warning `key` the student
+// already acted on, so it can be hidden on the next read. `until: null` = dismissed indefinitely
+// ("giữ nguyên"); `until: <date>` = snoozed until then ("nhắc tôi sau").
+const dismissalSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    title: { type: String, required: true, trim: true, maxlength: 200 },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
-    status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
+    key: { type: String, required: true, trim: true, maxlength: 200 },
+    action: { type: String, enum: ['keep', 'snooze'], required: true },
+    until: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-templateItemSchema.plugin(softDeletePlugin);
-templateItemSchema.plugin(auditPlugin);
-templateItemSchema.index({ owner: 1, createdAt: -1 });
+dismissalSchema.index({ owner: 1, key: 1 }, { unique: true });
 
-module.exports = mongoose.model('RiskItem', templateItemSchema);
+module.exports = mongoose.model('RiskWarningDismissal', dismissalSchema);

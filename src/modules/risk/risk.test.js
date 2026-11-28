@@ -1,15 +1,180 @@
-const { parsePagination } = require('../../utils/pagination');
+jest.mock('../planning/planning.service');
+jest.mock('../mastery/mastery.service');
+jest.mock('../business-rule/business-rule.service');
+jest.mock('./risk.model');
 
-describe('risk module', () => {
-  it('parsePagination defaults page=1 limit=20', () => {
-    const { page, limit, skip } = parsePagination({});
-    expect(page).toBe(1);
-    expect(limit).toBe(20);
-    expect(skip).toBe(0);
+const planningService = require('../planning/planning.service');
+const masteryService = require('../mastery/mastery.service');
+const businessRuleService = require('../business-rule/business-rule.service');
+const RiskWarningDismissal = require('./risk.model');
+const service = require('./risk.service');
+
+const now = new Date('2026-11-27T00:00:00Z');
+const daysAgo = (n) => new Date(now.getTime() - n * 86400000);
+
+const THRESHOLDS = {
+  'risk.fallingBehindPercent': 15,
+  'risk.decayDays': 14,
+  'risk.weakMasteryPercent': 40,
+};
+
+function session({ chapterTitle, startAt, status = 'planned' }) {
+  return { chapterTitle, startAt: new Date(startAt), status };
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  businessRuleService.getRiskThresholds.mockResolvedValue(THRESHOLDS);
+  RiskWarningDismissal.find.mockResolvedValue([]);
+});
+
+describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student self-report)', () => {
+  it('flags a chặng as at-risk when the completion gap exceeds the Admin threshold (B14)', async () => {
+    planningService.listForOwner.mockResolvedValue({
+      items: [
+        {
+          _id: 'p1',
+          sessions: [
+            session({ chapterTitle: 'Chặng 2', startAt: daysAgo(5), status: 'planned' }), // overdue
+            session({ chapterTitle: 'Chặng 2', startAt: daysAgo(4), status: 'planned' }), // overdue
+            session({ chapterTitle: 'Chặng 2', startAt: daysAgo(1), status: 'done' }),
+            session({ chapterTitle: 'Chặng 2', startAt: daysAgo(-5), status: 'planned' }), // not due yet
+          ],
+        },
+      ],
+    });
+    masteryService.listForOwner.mockResolvedValue({ items: [] });
+
+    const warnings = await service.listWarnings('u1', now);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ type: 'schedule', planId: 'p1', actions: ['replan', 'keep', 'snooze'] });
+    expect(warnings[0].reason).toMatch(/Tiến độ 25% so với kế hoạch 75%/);
   });
 
-  it('parsePagination caps limit at 100', () => {
-    const { limit } = parsePagination({ limit: '500' });
-    expect(limit).toBe(100);
+  it('does not flag a chặng that is on schedule (no completion gap)', async () => {
+    planningService.listForOwner.mockResolvedValue({
+      items: [
+        {
+          _id: 'p1',
+          sessions: [
+            session({ chapterTitle: 'Chặng 1', startAt: daysAgo(3), status: 'done' }),
+            session({ chapterTitle: 'Chặng 1', startAt: daysAgo(2), status: 'done' }), // both due sessions done
+            session({ chapterTitle: 'Chặng 1', startAt: daysAgo(-5), status: 'planned' }), // not due yet
+            session({ chapterTitle: 'Chặng 1', startAt: daysAgo(-10), status: 'planned' }),
+          ],
+        },
+      ],
+    });
+    masteryService.listForOwner.mockResolvedValue({ items: [] });
+
+    expect(await service.listWarnings('u1', now)).toEqual([]);
+  });
+
+  it('a lower Admin-configured threshold catches a gap that a higher one would not (proves the wiring is real)', async () => {
+    planningService.listForOwner.mockResolvedValue({
+      items: [
+        {
+          _id: 'p1',
+          sessions: [
+            session({ chapterTitle: 'Chặng 1', startAt: daysAgo(3), status: 'done' }),
+            session({ chapterTitle: 'Chặng 1', startAt: daysAgo(2), status: 'done' }),
+            session({ chapterTitle: 'Chặng 1', startAt: daysAgo(1), status: 'planned' }), // gap ≈ 33%
+          ],
+        },
+      ],
+    });
+    masteryService.listForOwner.mockResolvedValue({ items: [] });
+
+    businessRuleService.getRiskThresholds.mockResolvedValue({ ...THRESHOLDS, 'risk.fallingBehindPercent': 50 });
+    expect(await service.listWarnings('u1', now)).toEqual([]);
+
+    businessRuleService.getRiskThresholds.mockResolvedValue({ ...THRESHOLDS, 'risk.fallingBehindPercent': 10 });
+    expect(await service.listWarnings('u1', now)).toHaveLength(1);
+  });
+
+  it('flags a weak concept below the Admin-configured mastery threshold, with a reason', async () => {
+    planningService.listForOwner.mockResolvedValue({ items: [] });
+    masteryService.listForOwner.mockResolvedValue({
+      items: [
+        { concept: { _id: 'c1', name: 'Tích phân' }, score: 31, attemptsCount: 3, learningState: 'PRACTICING' },
+      ],
+    });
+    masteryService.computeDisplayState.mockReturnValue('PRACTICING');
+
+    const warnings = await service.listWarnings('u1', now);
+    expect(warnings).toEqual([
+      expect.objectContaining({ key: 'mastery:c1', type: 'mastery', reason: expect.stringContaining('40%') }),
+    ]);
+  });
+
+  it('does not flag a concept at or above the mastery threshold', async () => {
+    planningService.listForOwner.mockResolvedValue({ items: [] });
+    masteryService.listForOwner.mockResolvedValue({
+      items: [{ concept: { _id: 'c1', name: 'Giới hạn' }, score: 40, attemptsCount: 3, learningState: 'PRACTICING' }],
+    });
+    masteryService.computeDisplayState.mockReturnValue('PRACTICING');
+
+    expect(await service.listWarnings('u1', now)).toEqual([]);
+  });
+
+  it('flags a concept in DECAY_RISK using the Admin-configured decay-days threshold', async () => {
+    planningService.listForOwner.mockResolvedValue({ items: [] });
+    const item = {
+      concept: { _id: 'c1', name: 'Đạo hàm' },
+      score: 70,
+      attemptsCount: 3,
+      learningState: 'UNDERSTOOD',
+      lastAttemptAt: daysAgo(20),
+    };
+    masteryService.listForOwner.mockResolvedValue({ items: [item] });
+    masteryService.computeDisplayState.mockImplementation((m, decayDays) => (decayDays <= 20 ? 'DECAY_RISK' : 'UNDERSTOOD'));
+
+    const warnings = await service.listWarnings('u1', now);
+    expect(warnings).toEqual([expect.objectContaining({ key: 'decay:c1', type: 'decay', severity: 'thap' })]);
+  });
+
+  it('hides a warning the student already dismissed ("giữ nguyên")', async () => {
+    planningService.listForOwner.mockResolvedValue({ items: [] });
+    masteryService.listForOwner.mockResolvedValue({
+      items: [{ concept: { _id: 'c1', name: 'Tích phân' }, score: 31, attemptsCount: 3, learningState: 'PRACTICING' }],
+    });
+    masteryService.computeDisplayState.mockReturnValue('PRACTICING');
+    RiskWarningDismissal.find.mockResolvedValue([{ key: 'mastery:c1', action: 'keep', until: null }]);
+
+    expect(await service.listWarnings('u1', now)).toEqual([]);
+  });
+
+  it('resurfaces a snoozed warning once the snooze window has passed', async () => {
+    planningService.listForOwner.mockResolvedValue({ items: [] });
+    masteryService.listForOwner.mockResolvedValue({
+      items: [{ concept: { _id: 'c1', name: 'Tích phân' }, score: 31, attemptsCount: 3, learningState: 'PRACTICING' }],
+    });
+    masteryService.computeDisplayState.mockReturnValue('PRACTICING');
+    RiskWarningDismissal.find.mockResolvedValue([{ key: 'mastery:c1', action: 'snooze', until: daysAgo(1) }]);
+
+    expect(await service.listWarnings('u1', now)).toHaveLength(1);
+  });
+});
+
+describe('risk.service.dismiss', () => {
+  it('"keep" suppresses indefinitely (until: null)', async () => {
+    RiskWarningDismissal.findOneAndUpdate.mockResolvedValue({ key: 'mastery:c1', action: 'keep', until: null });
+    await service.dismiss('u1', 'mastery:c1', 'keep', now);
+    expect(RiskWarningDismissal.findOneAndUpdate).toHaveBeenCalledWith(
+      { owner: 'u1', key: 'mastery:c1' },
+      expect.objectContaining({ action: 'keep', until: null }),
+      expect.objectContaining({ upsert: true }),
+    );
+  });
+
+  it('"snooze" sets an until date a few days out', async () => {
+    RiskWarningDismissal.findOneAndUpdate.mockResolvedValue({});
+    await service.dismiss('u1', 'mastery:c1', 'snooze', now);
+    const [, update] = RiskWarningDismissal.findOneAndUpdate.mock.calls[0];
+    expect(update.until.getTime()).toBeGreaterThan(now.getTime());
+  });
+
+  it('rejects an empty key', async () => {
+    await expect(service.dismiss('u1', '', 'keep', now)).rejects.toMatchObject({ status: 400 });
   });
 });
