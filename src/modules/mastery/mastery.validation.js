@@ -4,6 +4,7 @@ const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
   concept: z.string().optional(),
+  subjectId: z.string().optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
