@@ -154,6 +154,21 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
 
     expect(await service.listWarnings('u1', now)).toHaveLength(1);
   });
+
+  it('không báo Retention Risk khi vừa luyện tập dù điểm dưới 60', async () => {
+  planningService.listForOwner.mockResolvedValue({ items: [] });
+  masteryService.listForOwner.mockResolvedValue({
+    items: [{
+      concept: { _id: 'c1', name: 'Đạo hàm' },
+      score: 55,
+      attemptsCount: 3,
+      learningState: 'UNDERSTOOD',
+      lastAttemptAt: now,
+    }],
+  });
+
+  expect(await service.listWarnings('u1', now)).toEqual([]);
+});
 });
 
 describe('risk.service.dismiss', () => {
