@@ -3,6 +3,7 @@ const { z } = require('zod');
 const generateQuestionSchema = z.object({
   concept: z.string().min(1),
   difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  assessmentItemId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
 });
 
 const listQuerySchema = z.object({
@@ -48,6 +49,7 @@ const generateTemplateSchema = z
 const askSchema = z.object({
   question: z.string().min(1).max(2000),
   concept: z.string().optional(),
+  assessmentItemId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
 });
 
 const explainWrongSchema = z.object({
@@ -59,6 +61,7 @@ const essayFeedbackSchema = z.object({
   conceptId: z.string().optional(),
   questionText: z.string().min(1).max(1000),
   answerText: z.string().min(1).max(4000),
+  assessmentItemId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
 });
 
 const rateSchema = z.object({

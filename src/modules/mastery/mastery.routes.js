@@ -23,6 +23,7 @@ router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.get('/export', validate(exportQuerySchema, 'query'), ctrl.exportReportCtrl);
 router.post('/complete', validate(markContentCompleteSchema), ctrl.markContentCompleteCtrl);
 router.post('/open', validate(openContentSchema), ctrl.openContentCtrl);
+router.get('/dashboard', ctrl.dashboardCtrl);
 router.get('/:id', validate(idParamsSchema, 'params'), ctrl.getCtrl);
 router.get(
   '/:id/trend',

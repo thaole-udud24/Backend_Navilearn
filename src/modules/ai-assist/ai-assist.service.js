@@ -12,6 +12,7 @@ const assessmentConfigService = require('../assessment-config/assessment-config.
 const masteryService = require('../mastery/mastery.service');
 const planningService = require('../planning/planning.service');
 const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
+const aiHelpService = require('./ai-help.service');
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
@@ -63,11 +64,14 @@ async function buildPersonalizationContext(ownerId, conceptId) {
   return `Student's current mastery for this concept: ${record.level} (${record.score}%). Adjust depth accordingly.`;
 }
 
-async function generateDraft(ownerId, { concept: conceptId, difficulty = 'medium' }, kind) {
+async function generateDraft(ownerId, { concept: conceptId, difficulty = 'medium', assessmentItemId }, kind) {
   const concept = await Concept.findById(conceptId);
   if (!concept) throw ApiError.badRequest('Concept not found', 'CONCEPT_NOT_FOUND');
 
   const prompt = `Generate a ${difficulty} multiple-choice question about "${concept.name}". ${MCQ_FORMAT_INSTRUCTIONS}`;
+  if (kind === 'practice_question') {
+    await aiHelpService.assertActiveAttempt(ownerId, assessmentItemId, conceptId);
+  }
   const { answer } = await ai.ask(prompt);
   const { valid, text, options } = validateGeneratedQuestionShape(answer);
 
@@ -79,7 +83,9 @@ async function generateDraft(ownerId, { concept: conceptId, difficulty = 'medium
     response: answer,
     valid,
   });
-
+  if (kind === 'practice_question' && valid) {
+    await aiHelpService.recordHelp(ownerId, assessmentItemId, conceptId, kind);
+  }
   return { aiAssistLogId: log.id, concept: conceptId, difficulty, valid, text, options };
 }
 
@@ -130,7 +136,8 @@ async function gradeEssay(ownerId, { conceptId, referenceAnswer, studentText }) 
 }
 
 // UC-AIA-11: a standalone "what would the AI say" preview — does not touch any grade or attempt.
-async function essayFeedback(ownerId, { conceptId, questionText, answerText }) {
+async function essayFeedback(ownerId, { conceptId, questionText, answerText, assessmentItemId }) {
+  await aiHelpService.assertActiveAttempt(ownerId, assessmentItemId, conceptId);
   const personalization = await buildPersonalizationContext(ownerId, conceptId);
   const prompt = `Give short, constructive feedback on this essay answer.\nQuestion: ${questionText}\nAnswer: ${answerText}\n${personalization}`;
   const { answer: feedback } = await ai.ask(prompt);
@@ -141,12 +148,13 @@ async function essayFeedback(ownerId, { conceptId, questionText, answerText }) {
     prompt,
     response: feedback,
   });
+  await aiHelpService.recordHelp(ownerId, assessmentItemId, conceptId, 'essay_feedback');
   return { feedback };
 }
 
 // UC-AIA-02: grounded Q&A — "source" is the matched concept's own description until a document store
 // (SUB module) exists to cite from directly.
-async function askWithSource(ownerId, { question, concept: conceptId }) {
+async function askWithSource(ownerId, { question, concept: conceptId, assessmentItemId }) {
   let concept = conceptId ? await Concept.findById(conceptId) : null;
   if (!concept) {
     const terms = tokenize(question);
@@ -155,6 +163,7 @@ async function askWithSource(ownerId, { question, concept: conceptId }) {
       : null;
   }
 
+  await aiHelpService.assertActiveAttempt(ownerId, assessmentItemId, concept?.id);
   const personalization = await buildPersonalizationContext(ownerId, concept?.id);
   const groundingText = concept
     ? `Source material: "${concept.name}" — ${concept.description || '(no description)'}`
@@ -171,6 +180,7 @@ async function askWithSource(ownerId, { question, concept: conceptId }) {
     response: answer,
     sources,
   });
+  await aiHelpService.recordHelp(ownerId, assessmentItemId, concept?.id, 'qa');
 
   return { answer, sources };
 }

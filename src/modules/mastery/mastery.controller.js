@@ -1,6 +1,7 @@
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created } = require('../../utils/response');
 const service = require('./mastery.service');
+const dashboardService = require('./mastery.dashboard.service');
 
 const listCtrl = asyncHandler(async (req, res) => {
   const { items, meta } = await service.listForOwner(req.user.id, req.query, req.user);
@@ -38,6 +39,11 @@ const exportReportCtrl = asyncHandler(async (req, res) => {
   return ok(res, report);
 });
 
+const dashboardCtrl = asyncHandler(async (req, res) => {
+  const dashboard = await dashboardService.getDashboard(req.user.id); 
+  return ok(res, dashboard);
+});
+
 module.exports = {
   listCtrl,
   getCtrl,
@@ -46,4 +52,5 @@ module.exports = {
   markContentCompleteCtrl,
   exportReportCtrl,
   openContentCtrl,
+  dashboardCtrl,
 };

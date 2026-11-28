@@ -34,6 +34,8 @@ const assessmentSchema = new mongoose.Schema(
     // UC-ASM-13 retry-wrong-only attempts narrow grading to a subset of the config's questions.
     questionsOverride: { type: [mongoose.Schema.Types.ObjectId], ref: 'QuestionItem', default: [] },
     independentCheck: { type: Boolean, default: false }, // UC-ASM-12
+    aiHelpLevel: { type: Number, min: 0, max: 4, default: 0 },
+    aiHelpCount: { type: Number, min: 0, default: 0 },
     answers: { type: [answerSchema], default: [] },
     status: { type: String, enum: ['in_progress', 'submitted'], default: 'in_progress' },
     score: { type: Number, default: 0, min: 0, max: 100 },
