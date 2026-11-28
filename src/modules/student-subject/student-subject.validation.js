@@ -15,6 +15,9 @@ const updateSchema = z
   .object({
     pinned: z.boolean().optional(),
     displayOrder: z.number().int().optional(),
+    customTitle: z.string().trim().min(1).max(200).optional(),
+    customDescription: z.string().trim().max(500).optional(),
+    customColor: z.string().trim().max(20).optional(),
   })
   .refine((o) => Object.keys(o).length > 0, 'No fields to update');
 
