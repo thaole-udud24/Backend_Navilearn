@@ -31,4 +31,10 @@ const removeCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
-module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl };
+// B11: admin stat tiles.
+const statsCtrl = asyncHandler(async (_req, res) => {
+  const result = await service.stats();
+  return ok(res, result);
+});
+
+module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl, statsCtrl };
