@@ -6,6 +6,8 @@ const RiskWarningDismissal = require('./risk.model');
 const Concept = require('../knowledge/knowledge.model');
 const MasteryItem = require('../mastery/mastery.model');
 const PlanningGoal = require('../planning/planning.goal.model');
+const AssessmentItem = require('../assessment/assessment.model');
+const logger = require('../../config/logger');
 
 const DAY_MS = 86400000;
 // shortcut: fixed snooze length, no custom date picker — BR-13 only calls for "nhắc sau", not a
@@ -149,9 +151,7 @@ async function prerequisiteWarnings(ownerId, plans, weakThreshold, dismissals, n
     .lean();
 
   const targetById = new Map(targets.map((item) => [String(item._id), item]));
-  const prerequisiteIds = [
-    ...new Set(targets.flatMap((item) => (item.prerequisites ?? []).map(String))),
-  ];
+  const prerequisiteIds = [...new Set(targets.flatMap((item) => (item.prerequisites ?? []).map(String)))];
   if (prerequisiteIds.length === 0) return [];
 
   const [prerequisites, masteries] = await Promise.all([
@@ -169,12 +169,8 @@ async function prerequisiteWarnings(ownerId, plans, weakThreshold, dismissals, n
       .lean(),
   ]);
 
-  const prerequisiteById = new Map(
-    prerequisites.map((item) => [String(item._id), item]),
-  );
-  const masteryByConcept = new Map(
-    masteries.map((item) => [String(item.concept), item]),
-  );
+  const prerequisiteById = new Map(prerequisites.map((item) => [String(item._id), item]));
+  const masteryByConcept = new Map(masteries.map((item) => [String(item.concept), item]));
 
   const warnings = [];
   const seen = new Set();
@@ -192,9 +188,7 @@ async function prerequisiteWarnings(ownerId, plans, weakThreshold, dismissals, n
       .filter(Boolean)
       .filter((prerequisite) => {
         const mastery = masteryByConcept.get(String(prerequisite._id));
-        return !mastery ||
-          mastery.attemptsCount < 1 ||
-          mastery.score < weakThreshold;
+        return !mastery || mastery.attemptsCount < 1 || mastery.score < weakThreshold;
       });
 
     if (weak.length === 0) continue;
@@ -261,11 +255,7 @@ async function deadlineCollisionWarnings(ownerId, plans, dismissals, now) {
 
   const dayNumber = (date) => {
     const value = new Date(date);
-    return Date.UTC(
-      value.getUTCFullYear(),
-      value.getUTCMonth(),
-      value.getUTCDate(),
-    ) / DAY_MS;
+    return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()) / DAY_MS;
   };
 
   const formatDate = (date) =>
@@ -309,6 +299,95 @@ async function deadlineCollisionWarnings(ownerId, plans, dismissals, now) {
   return warnings;
 }
 
+// BE-RSK-06: cảnh báo khi tỷ lệ bài có AI vượt BR-15.
+// Bài kiểm chứng độc lập đạt, thực hiện sau lần dùng AI gần nhất, sẽ giải tỏa cảnh báo.
+async function aiDependencyWarnings(ownerId, dismissals, now) {
+  const attempts = await AssessmentItem.find({
+    owner: ownerId,
+    status: 'submitted',
+  })
+    .select('concept aiHelpLevel independentCheck passed score submittedAt')
+    .sort({ submittedAt: -1 })
+    .lean();
+
+  if (attempts.length === 0) return [];
+
+  const rule = await businessRuleService.getByCode('BR-15');
+  if (!rule.isActive || !Number.isFinite(rule.value)) return [];
+
+  const byConcept = new Map();
+
+  for (const attempt of attempts) {
+    const conceptId = String(attempt.concept);
+    if (!byConcept.has(conceptId)) {
+      byConcept.set(conceptId, {
+        total: 0,
+        assisted: 0,
+        latestHelpAt: null,
+        latestCheck: null,
+      });
+    }
+
+    const group = byConcept.get(conceptId);
+    // Kiểm chứng độc lập đo kết quả, không phải cơ hội sử dụng AI.
+    if (!attempt.independentCheck) group.total += 1;
+
+    if (attempt.aiHelpLevel > 0) {
+      group.assisted += 1;
+      // Danh sách đã sắp theo submittedAt giảm dần.
+      if (!group.latestHelpAt) group.latestHelpAt = new Date(attempt.submittedAt);
+    }
+
+    if (attempt.independentCheck && !group.latestCheck) {
+      group.latestCheck = attempt;
+    }
+  }
+
+  const riskyIds = [...byConcept]
+    .filter(([, group]) => group.assisted / group.total > rule.value)
+    .map(([conceptId]) => conceptId);
+
+  if (riskyIds.length === 0) return [];
+
+  const concepts = await Concept.find({ _id: { $in: riskyIds } })
+    .select('name')
+    .lean();
+  const conceptNames = new Map(concepts.map((concept) => [String(concept._id), concept.name]));
+
+  const warnings = [];
+
+  for (const conceptId of riskyIds) {
+    const group = byConcept.get(conceptId);
+    const key = `ai_dependency:${conceptId}`;
+    if (isSuppressed(dismissals, key, now)) continue;
+
+    const check = group.latestCheck;
+    const checkAfterHelp = check && new Date(check.submittedAt).getTime() >= group.latestHelpAt.getTime();
+
+    if (checkAfterHelp && check.passed) continue;
+
+    const failedCheck = checkAfterHelp && !check.passed;
+    const ratioPercent = Math.round((group.assisted / group.total) * 100);
+    const thresholdPercent = Math.round(rule.value * 100);
+    const conceptName = conceptNames.get(conceptId) || 'kiến thức này';
+
+    warnings.push({
+      key,
+      // Frontend Risk hiện hỗ trợ type "mastery".
+      type: 'mastery',
+      severity: failedCheck ? 'cao' : 'trung_binh',
+      title: `Có nguy cơ phụ thuộc AI khi học ${conceptName}`,
+      reason: failedCheck
+        ? `Đã dùng AI trong ${ratioPercent}% số bài, vượt ngưỡng ${thresholdPercent}%. Bài kiểm chứng độc lập gần nhất chưa đạt (${check.score}%).`
+        : `Đã dùng AI trong ${ratioPercent}% số bài, vượt ngưỡng ${thresholdPercent}%. Hãy làm bài kiểm chứng độc lập để xác nhận mức độ nắm vững kiến thức.`,
+      actions: ['keep', 'snooze'],
+      conceptId,
+    });
+  }
+
+  return warnings;
+}
+
 async function listAllMasteries(ownerId) {
   const all = [];
   const limit = 100;
@@ -335,17 +414,24 @@ async function listAllMasteries(ownerId) {
 async function listWarnings(ownerId, now = new Date()) {
   const thresholds = await businessRuleService.getRiskThresholds();
   const [{ items: plans }, masteries, dismissals] = await Promise.all([
-  planningService.listForOwner(ownerId, { status: 'active', limit: '100' }),
-  listAllMasteries(ownerId),
-  loadDismissals(ownerId),
+    planningService.listForOwner(ownerId, { status: 'active', limit: '100' }),
+    listAllMasteries(ownerId),
+    loadDismissals(ownerId),
   ]);
+  let aiWarnings = [];
+  try {
+    aiWarnings = await aiDependencyWarnings(ownerId, dismissals, now);
+  } catch (err) {
+    logger.error({ err, ownerId }, 'Failed to detect AI dependency risk');
+  }
 
   const warnings = [
     ...scheduleWarnings(plans, thresholds['risk.fallingBehindPercent'], dismissals, now),
     ...masteryWarnings(masteries, thresholds['risk.weakMasteryPercent'], dismissals, now),
     ...decayWarnings(masteries, thresholds['risk.decayDays'], dismissals, now),
-    ...await prerequisiteWarnings(ownerId, plans, thresholds['risk.weakMasteryPercent'], dismissals, now),
-    ...await deadlineCollisionWarnings(ownerId, plans, dismissals, now),
+    ...(await prerequisiteWarnings(ownerId, plans, thresholds['risk.weakMasteryPercent'], dismissals, now)),
+    ...(await deadlineCollisionWarnings(ownerId, plans, dismissals, now)),
+    ...aiWarnings,
   ];
   return warnings.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 }

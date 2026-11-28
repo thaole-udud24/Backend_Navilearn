@@ -2,7 +2,16 @@ jest.mock('../planning/planning.service');
 jest.mock('../mastery/mastery.service');
 jest.mock('../business-rule/business-rule.service');
 jest.mock('./risk.model');
+jest.mock('../assessment/assessment.model', () => ({
+  find: jest.fn(),
+}));
 
+jest.mock('../knowledge/knowledge.model', () => ({
+  find: jest.fn(),
+}));
+
+const AssessmentItem = require('../assessment/assessment.model');
+const Concept = require('../knowledge/knowledge.model');
 const planningService = require('../planning/planning.service');
 const masteryService = require('../mastery/mastery.service');
 const businessRuleService = require('../business-rule/business-rule.service');
@@ -22,10 +31,27 @@ function session({ chapterTitle, startAt, status = 'planned' }) {
   return { chapterTitle, startAt: new Date(startAt), status };
 }
 
+function mockAttempts(rows) {
+  AssessmentItem.find.mockReturnValue({
+    select: jest.fn().mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue(rows),
+      }),
+    }),
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   businessRuleService.getRiskThresholds.mockResolvedValue(THRESHOLDS);
   RiskWarningDismissal.find.mockResolvedValue([]);
+  mockAttempts([]);
+  businessRuleService.getByCode.mockResolvedValue({ value: 0.7, isActive: true });
+  Concept.find.mockReturnValue({
+    select: jest.fn().mockReturnValue({
+      lean: jest.fn().mockResolvedValue([{ _id: 'c1', name: 'Đạo hàm' }]),
+    }),
+  });
 });
 
 describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student self-report)', () => {
@@ -47,7 +73,11 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
 
     const warnings = await service.listWarnings('u1', now);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatchObject({ type: 'schedule', planId: 'p1', actions: ['replan', 'keep', 'snooze'] });
+    expect(warnings[0]).toMatchObject({
+      type: 'schedule',
+      planId: 'p1',
+      actions: ['replan', 'keep', 'snooze'],
+    });
     expect(warnings[0].reason).toMatch(/Tiến độ 25% so với kế hoạch 75%/);
   });
 
@@ -85,10 +115,16 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
     });
     masteryService.listForOwner.mockResolvedValue({ items: [] });
 
-    businessRuleService.getRiskThresholds.mockResolvedValue({ ...THRESHOLDS, 'risk.fallingBehindPercent': 50 });
+    businessRuleService.getRiskThresholds.mockResolvedValue({
+      ...THRESHOLDS,
+      'risk.fallingBehindPercent': 50,
+    });
     expect(await service.listWarnings('u1', now)).toEqual([]);
 
-    businessRuleService.getRiskThresholds.mockResolvedValue({ ...THRESHOLDS, 'risk.fallingBehindPercent': 10 });
+    businessRuleService.getRiskThresholds.mockResolvedValue({
+      ...THRESHOLDS,
+      'risk.fallingBehindPercent': 10,
+    });
     expect(await service.listWarnings('u1', now)).toHaveLength(1);
   });
 
@@ -96,7 +132,12 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
     planningService.listForOwner.mockResolvedValue({ items: [] });
     masteryService.listForOwner.mockResolvedValue({
       items: [
-        { concept: { _id: 'c1', name: 'Tích phân' }, score: 31, attemptsCount: 3, learningState: 'PRACTICING' },
+        {
+          concept: { _id: 'c1', name: 'Tích phân' },
+          score: 31,
+          attemptsCount: 3,
+          learningState: 'PRACTICING',
+        },
       ],
     });
     masteryService.computeDisplayState.mockReturnValue('PRACTICING');
@@ -110,7 +151,14 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
   it('does not flag a concept at or above the mastery threshold', async () => {
     planningService.listForOwner.mockResolvedValue({ items: [] });
     masteryService.listForOwner.mockResolvedValue({
-      items: [{ concept: { _id: 'c1', name: 'Giới hạn' }, score: 40, attemptsCount: 3, learningState: 'PRACTICING' }],
+      items: [
+        {
+          concept: { _id: 'c1', name: 'Giới hạn' },
+          score: 40,
+          attemptsCount: 3,
+          learningState: 'PRACTICING',
+        },
+      ],
     });
     masteryService.computeDisplayState.mockReturnValue('PRACTICING');
 
@@ -127,7 +175,9 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
       lastAttemptAt: daysAgo(20),
     };
     masteryService.listForOwner.mockResolvedValue({ items: [item] });
-    masteryService.computeDisplayState.mockImplementation((m, decayDays) => (decayDays <= 20 ? 'DECAY_RISK' : 'UNDERSTOOD'));
+    masteryService.computeDisplayState.mockImplementation((m, decayDays) =>
+      decayDays <= 20 ? 'DECAY_RISK' : 'UNDERSTOOD',
+    );
 
     const warnings = await service.listWarnings('u1', now);
     expect(warnings).toEqual([expect.objectContaining({ key: 'decay:c1', type: 'decay', severity: 'thap' })]);
@@ -136,7 +186,14 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
   it('hides a warning the student already dismissed ("giữ nguyên")', async () => {
     planningService.listForOwner.mockResolvedValue({ items: [] });
     masteryService.listForOwner.mockResolvedValue({
-      items: [{ concept: { _id: 'c1', name: 'Tích phân' }, score: 31, attemptsCount: 3, learningState: 'PRACTICING' }],
+      items: [
+        {
+          concept: { _id: 'c1', name: 'Tích phân' },
+          score: 31,
+          attemptsCount: 3,
+          learningState: 'PRACTICING',
+        },
+      ],
     });
     masteryService.computeDisplayState.mockReturnValue('PRACTICING');
     RiskWarningDismissal.find.mockResolvedValue([{ key: 'mastery:c1', action: 'keep', until: null }]);
@@ -147,7 +204,14 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
   it('resurfaces a snoozed warning once the snooze window has passed', async () => {
     planningService.listForOwner.mockResolvedValue({ items: [] });
     masteryService.listForOwner.mockResolvedValue({
-      items: [{ concept: { _id: 'c1', name: 'Tích phân' }, score: 31, attemptsCount: 3, learningState: 'PRACTICING' }],
+      items: [
+        {
+          concept: { _id: 'c1', name: 'Tích phân' },
+          score: 31,
+          attemptsCount: 3,
+          learningState: 'PRACTICING',
+        },
+      ],
     });
     masteryService.computeDisplayState.mockReturnValue('PRACTICING');
     RiskWarningDismissal.find.mockResolvedValue([{ key: 'mastery:c1', action: 'snooze', until: daysAgo(1) }]);
@@ -156,24 +220,120 @@ describe('risk.service.listWarnings — N9/BR-13 (system-generated, not student 
   });
 
   it('không báo Retention Risk khi vừa luyện tập dù điểm dưới 60', async () => {
-  planningService.listForOwner.mockResolvedValue({ items: [] });
-  masteryService.listForOwner.mockResolvedValue({
-    items: [{
-      concept: { _id: 'c1', name: 'Đạo hàm' },
-      score: 55,
-      attemptsCount: 3,
-      learningState: 'UNDERSTOOD',
-      lastAttemptAt: now,
-    }],
+    planningService.listForOwner.mockResolvedValue({ items: [] });
+    masteryService.listForOwner.mockResolvedValue({
+      items: [
+        {
+          concept: { _id: 'c1', name: 'Đạo hàm' },
+          score: 55,
+          attemptsCount: 3,
+          learningState: 'UNDERSTOOD',
+          lastAttemptAt: now,
+        },
+      ],
+    });
+
+    expect(await service.listWarnings('u1', now)).toEqual([]);
+  });
+});
+describe('BE-RSK-06 AI Dependency Risk', () => {
+  const assisted = (day) => ({
+    concept: 'c1',
+    aiHelpLevel: 2,
+    independentCheck: false,
+    submittedAt: daysAgo(day),
   });
 
-  expect(await service.listWarnings('u1', now)).toEqual([]);
-});
-});
+  const unassisted = (day) => ({
+    concept: 'c1',
+    aiHelpLevel: 0,
+    independentCheck: false,
+    submittedAt: daysAgo(day),
+  });
 
+  beforeEach(() => {
+    planningService.listForOwner.mockResolvedValue({ items: [] });
+    masteryService.listForOwner.mockResolvedValue({ items: [] });
+  });
+
+  it('cảnh báo khi AI Help Ratio vượt BR-15', async () => {
+    mockAttempts([assisted(1), assisted(2), assisted(3), unassisted(4)]);
+
+    const warnings = await service.listWarnings('u1', now);
+
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        key: 'ai_dependency:c1',
+        severity: 'trung_binh',
+        reason: expect.stringContaining('75%'),
+      }),
+    ]);
+  });
+
+  it('nâng mức cảnh báo nếu kiểm chứng độc lập sau đó không đạt', async () => {
+    mockAttempts([
+      {
+        concept: 'c1',
+        aiHelpLevel: 0,
+        independentCheck: true,
+        passed: false,
+        score: 30,
+        submittedAt: daysAgo(0),
+      },
+      assisted(1),
+      assisted(2),
+      assisted(3),
+      unassisted(4),
+    ]);
+
+    const warnings = await service.listWarnings('u1', now);
+
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        key: 'ai_dependency:c1',
+        severity: 'cao',
+        reason: expect.stringContaining('30%'),
+      }),
+    ]);
+    expect(warnings[0].reason).toContain('75%');
+  });
+
+  it('không cảnh báo nếu kiểm chứng độc lập sau lần dùng AI gần nhất đã đạt', async () => {
+    mockAttempts([
+      {
+        concept: 'c1',
+        aiHelpLevel: 0,
+        independentCheck: true,
+        passed: true,
+        score: 85,
+        submittedAt: daysAgo(0),
+      },
+      assisted(1),
+      assisted(2),
+      assisted(3),
+      assisted(4),
+    ]);
+
+    expect(await service.listWarnings('u1', now)).toEqual([]);
+  });
+
+  it('không cảnh báo ở đúng ngưỡng BR-15', async () => {
+    businessRuleService.getByCode.mockResolvedValue({
+      value: 0.75,
+      isActive: true,
+    });
+    mockAttempts([assisted(1), assisted(2), assisted(3), unassisted(4)]);
+
+    expect(await service.listWarnings('u1', now)).toEqual([]);
+  });
+});
 describe('risk.service.dismiss', () => {
   it('"keep" suppresses indefinitely (until: null)', async () => {
-    RiskWarningDismissal.findOneAndUpdate.mockResolvedValue({ key: 'mastery:c1', action: 'keep', until: null });
+    RiskWarningDismissal.findOneAndUpdate.mockResolvedValue({
+      key: 'mastery:c1',
+      action: 'keep',
+      until: null,
+    });
     await service.dismiss('u1', 'mastery:c1', 'keep', now);
     expect(RiskWarningDismissal.findOneAndUpdate).toHaveBeenCalledWith(
       { owner: 'u1', key: 'mastery:c1' },
