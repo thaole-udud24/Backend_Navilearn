@@ -31,4 +31,36 @@ const removeCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
-module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl };
+const markReadCtrl = asyncHandler(async (req, res) => {
+  const item = await service.markRead(req.params.id, req.user.id);
+  return ok(res, item, 'Marked as read');
+});
+
+const markAllReadCtrl = asyncHandler(async (req, res) => {
+  await service.markAllRead(req.user.id);
+  return ok(res, null, 'All marked as read');
+});
+
+// B9: admin compose — real fan-out to the targeted students.
+const broadcastCreateCtrl = asyncHandler(async (req, res) => {
+  const result = await service.broadcastCreate(req.user.id, req.body);
+  return created(res, result);
+});
+
+// B9: "Đã gửi" history.
+const listBroadcastsCtrl = asyncHandler(async (req, res) => {
+  const { items, meta } = await service.listBroadcasts(req.query);
+  return ok(res, items, 'OK', meta);
+});
+
+module.exports = {
+  createCtrl,
+  listCtrl,
+  getCtrl,
+  updateStatusCtrl,
+  removeCtrl,
+  markReadCtrl,
+  markAllReadCtrl,
+  broadcastCreateCtrl,
+  listBroadcastsCtrl,
+};
