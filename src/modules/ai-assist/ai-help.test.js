@@ -49,6 +49,12 @@ it('calculates the fraction of submitted attempts assisted by AI', async () => {
     assistedAttempts: 2,
     aiHelpRatio: 0.5,
   });
+  expect(AssessmentItem.countDocuments).toHaveBeenNthCalledWith(1, {
+    owner: 'u1',
+    status: 'submitted',
+    independentCheck: { $ne: true },
+    concept: 'c1',
+  });
 });
 
 it('returns 50% when one of two submitted attempts used AI', async () => {

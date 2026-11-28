@@ -62,6 +62,7 @@ async function getAiHelpRatio(ownerId, conceptId) {
   const filter = {
     owner: ownerId,
     status: 'submitted',
+    independentCheck: { $ne: true },
     ...(conceptId ? { concept: conceptId } : {}),
   };
 
