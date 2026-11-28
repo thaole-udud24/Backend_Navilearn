@@ -41,6 +41,10 @@ const assessmentSchema = new mongoose.Schema(
     passed: { type: Boolean, default: false },
     startedAt: { type: Date, default: Date.now },
     submittedAt: { type: Date, default: null },
+    // S12 "Mastery (đo được)": the concept's Mastery score right before/after this attempt's
+    // evidence was applied (mastery.service.upsertForAttempt) — real snapshot, not a derived guess.
+    masteryBefore: { type: Number, default: null },
+    masteryAfter: { type: Number, default: null },
   },
   { timestamps: true },
 );

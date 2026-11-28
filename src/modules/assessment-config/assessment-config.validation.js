@@ -40,31 +40,51 @@ const listQuerySchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
   concept: z.string().optional(),
+  subjectId: z.string().optional(),
   kind: z.enum(KINDS).optional(),
   status: z.enum(['active', 'archived']).optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
+const WEIGHT_SUM_EPSILON = 0.01;
+
 const criterionSchema = z.object({
   name: z.string().min(1).max(200),
-  maxPoints: z.number().int().min(1).max(100),
+  // % of the rubric's totalPoints; all criteria in a rubric must sum to 100.
+  weightPct: z.number().min(0.01).max(100),
   description: z.string().max(1000).optional(),
 });
 
-const createRubricSchema = z.object({
-  title: z.string().min(1).max(200),
-  concept: z.string().min(1),
-  criteria: z.array(criterionSchema).min(1, 'A rubric needs at least 1 criterion'),
-  source: z.enum(['manual', 'ai', 'import']).optional(),
-});
+function weightsSumTo100(criteria) {
+  const sum = criteria.reduce((s, c) => s + c.weightPct, 0);
+  return Math.abs(sum - 100) <= WEIGHT_SUM_EPSILON;
+}
+
+const createRubricSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    concept: z.string().min(1),
+    totalPoints: z.number().min(1).max(1000).optional(),
+    criteria: z.array(criterionSchema).min(1, 'A rubric needs at least 1 criterion'),
+    source: z.enum(['manual', 'ai', 'import']).optional(),
+  })
+  .refine((data) => weightsSumTo100(data.criteria), {
+    message: 'Criteria weightPct must sum to 100',
+    path: ['criteria'],
+  });
 
 const updateRubricSchema = z
   .object({
     title: z.string().min(1).max(200).optional(),
+    totalPoints: z.number().min(1).max(1000).optional(),
     criteria: z.array(criterionSchema).min(1).optional(),
   })
-  .refine((data) => Object.keys(data).length > 0, { message: 'Provide at least one field to update' });
+  .refine((data) => Object.keys(data).length > 0, { message: 'Provide at least one field to update' })
+  .refine((data) => !data.criteria || weightsSumTo100(data.criteria), {
+    message: 'Criteria weightPct must sum to 100',
+    path: ['criteria'],
+  });
 
 const updateRubricStatusSchema = z.object({ status: z.enum(['active', 'archived']) });
 

@@ -6,6 +6,7 @@ const Rubric = require('./rubric.model');
 const Concept = require('../knowledge/knowledge.model');
 const QuestionItem = require('../question-bank/question-bank.model');
 const { ROLES } = require('../../shared/roles');
+const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
 const { createSchema, createRubricSchema } = require('./assessment-config.validation');
 
 const UPDATABLE_FIELDS = ['title', 'questions', 'passScore', 'timeLimitMinutes', 'kind'];
@@ -33,13 +34,20 @@ async function create(ownerId, data) {
 
 async function list(query, requester) {
   const { page, limit, skip } = parsePagination(query);
+  const subjectIds = await resolveSubjectConceptIds(query.subjectId, requester);
   const filter = {
-    ...(query.concept ? { concept: query.concept } : {}),
     ...(query.kind ? { kind: query.kind } : {}),
     // Non-admins are always forced to 'active', ignoring any status they ask for — only admins
     // may pass their own status filter (or none, to see every status).
     status: requester.role === ROLES.ADMIN ? query.status : 'active',
   };
+  if (query.concept && subjectIds) {
+    filter.concept = subjectIds.some((id) => String(id) === String(query.concept)) ? query.concept : null;
+  } else if (query.concept) {
+    filter.concept = query.concept;
+  } else if (subjectIds) {
+    filter.concept = { $in: subjectIds };
+  }
   if (filter.status === undefined) delete filter.status;
   const [items, total] = await Promise.all([
     AssessmentConfigItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -154,6 +162,11 @@ async function findActiveRubricForConcept(conceptId) {
   return Rubric.findOne({ concept: conceptId, status: 'active' }).sort({ createdAt: -1 });
 }
 
+// A criterion's absolute point value: its share (weightPct) of the rubric's totalPoints.
+function criterionPoints(rubric, criterion) {
+  return Math.round(((criterion.weightPct / 100) * rubric.totalPoints) * 10) / 10;
+}
+
 async function importBulkConfigs(ownerId, rows) {
   return importBulk(rows, {
     schema: createSchema,
@@ -193,6 +206,7 @@ module.exports = {
   updateRubric,
   updateRubricStatus,
   findActiveRubricForConcept,
+  criterionPoints,
   importBulkRubrics,
   exportAllRubrics,
 };

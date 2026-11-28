@@ -13,6 +13,9 @@ const {
   compareQuerySchema,
   retryWrongSchema,
   independentCheckSchema,
+  placementCheckSchema,
+  retryWrongItemsSchema,
+  quickQuizSchema,
 } = require('./assessment.validation');
 const ctrl = require('./assessment.controller');
 
@@ -25,6 +28,9 @@ router.use(authenticate, authorize(ROLES.STUDENT));
 router.get('/compare', validate(compareQuerySchema, 'query'), ctrl.compareCtrl);
 router.post('/retry-wrong', validate(retryWrongSchema), ctrl.retryWrongCtrl);
 router.post('/independent-check', validate(independentCheckSchema), ctrl.independentCheckCtrl);
+router.post('/start-placement', validate(placementCheckSchema), ctrl.placementCheckCtrl);
+router.post('/retry-wrong-items', validate(retryWrongItemsSchema), ctrl.retryWrongItemsCtrl);
+router.post('/quick-quiz', validate(quickQuizSchema), ctrl.quickQuizCtrl);
 
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', validate(startSchema), ctrl.startCtrl);

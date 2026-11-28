@@ -4,7 +4,10 @@ const AssessmentItem = require('./assessment.model');
 const AssessmentConfigItem = require('../assessment-config/assessment-config.model');
 const QuestionItem = require('../question-bank/question-bank.model');
 const masteryService = require('../mastery/mastery.service');
+const wrongItemService = require('../wrong-item/wrong-item.service');
 const aiAssistService = require('../ai-assist/ai-assist.service');
+const knowledgeService = require('../knowledge/knowledge.service');
+const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
 
 async function start(ownerId, assessmentConfigId) {
   const config = await AssessmentConfigItem.findOne({ _id: assessmentConfigId, status: 'active' });
@@ -28,13 +31,20 @@ async function start(ownerId, assessmentConfigId) {
   });
 }
 
-async function listForOwner(ownerId, query) {
+async function listForOwner(ownerId, query, requester) {
   const { page, limit, skip } = parsePagination(query);
+  const subjectIds = await resolveSubjectConceptIds(query.subjectId, requester);
   const filter = {
     owner: ownerId,
     ...(query.status ? { status: query.status } : {}),
-    ...(query.concept ? { concept: query.concept } : {}), // UC-ASM-02: history filtered by concept
   };
+  if (query.concept && subjectIds) {
+    filter.concept = subjectIds.some((id) => String(id) === String(query.concept)) ? query.concept : null;
+  } else if (query.concept) {
+    filter.concept = query.concept;
+  } else if (subjectIds) {
+    filter.concept = { $in: subjectIds };
+  }
   const [items, total] = await Promise.all([
     AssessmentItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     AssessmentItem.countDocuments(filter),
@@ -59,7 +69,12 @@ async function getOwned(id, requester) {
 
   const config = await AssessmentConfigItem.findById(item.assessmentConfig);
   const revealAnswers = (config?.showAnswersPolicy ?? 'after_submit') === 'after_submit';
-  const questions = await QuestionItem.find({ _id: item.answers.map((a) => a.question) });
+  // .populate('concept', 'name') so S12's "Theo chủ đề" breakdown can group each answer by its
+  // question's own (leaf) concept, not just the attempt's single top-level concept.
+  const questions = await QuestionItem.find({ _id: item.answers.map((a) => a.question) }).populate(
+    'concept',
+    'name',
+  );
   const questionById = new Map(questions.map((q) => [String(q._id), q]));
 
   const plain = item.toObject();
@@ -68,6 +83,8 @@ async function getOwned(id, requester) {
     return {
       ...a,
       questionText: q?.text ?? '',
+      conceptId: q?.concept?._id,
+      conceptName: q?.concept?.name,
       correctAnswer: revealAnswers
         ? q?.referenceAnswer || q?.options?.find((o) => o.isCorrect)?.text
         : undefined,
@@ -175,6 +192,10 @@ async function submit(id, requesterId, answers) {
   const attempt = await getOwnedRaw(id, requesterId);
   if (attempt.status !== 'in_progress') throw ApiError.conflict('Assessment already submitted');
 
+  // S12 "Mastery (đo được)": snapshot the concept's Mastery score before this attempt's evidence is
+  // applied, so the result screen can show a real before→after, not a fabricated one.
+  const masteryBefore = (await masteryService.findRaw(requesterId, attempt.concept))?.score ?? 0;
+
   const config = await AssessmentConfigItem.findById(attempt.assessmentConfig);
   if (!config) throw ApiError.notFound('Assessment config not found');
 
@@ -207,14 +228,34 @@ async function submit(id, requesterId, answers) {
   attempt.scoreHistory.push({ score, reason: 'initial_grading', changedBy: requesterId });
   await attempt.save();
 
-  await masteryService.upsertForAttempt(requesterId, attempt.concept, attempt.score, 'initial_grading', {
+  // Sổ câu sai: record every wrong answer; a question answered correctly while retrying from the
+  // notebook (questionsOverride) is considered mastered. markMastered is a no-op if the question
+  // was never in the notebook to begin with.
+  const isRetry = attempt.questionsOverride.length > 0;
+  await Promise.all(
+    attempt.answers.map((a) => {
+      if (!a.isCorrect) {
+        const question = questionById.get(String(a.question));
+        return wrongItemService.recordWrong(requesterId, a.question, question?.concept ?? attempt.concept);
+      }
+      if (isRetry) return wrongItemService.markMastered(requesterId, a.question);
+      return null;
+    }),
+  );
+
+  const masteryItem = await masteryService.upsertForAttempt(requesterId, attempt.concept, attempt.score, 'initial_grading', {
     independentCheck: attempt.independentCheck,
+    evidenceType: config.kind,
   });
   if (config.kind === 'placement') {
     await masteryService.initializeFromPlacement(requesterId, [
       { concept: attempt.concept, scorePercent: score },
     ]);
   }
+
+  attempt.masteryBefore = masteryBefore;
+  attempt.masteryAfter = masteryItem?.score ?? null;
+  await attempt.save();
 
   return attempt;
 }
@@ -236,39 +277,128 @@ async function startRetryWrong(ownerId, previousAttemptId) {
   });
 }
 
+// Shared by startIndependentCheck/startPlacementCheck/startRetryFromWrongItems: find-or-create the
+// auto AssessmentConfigItem for (concept, kind), then start an AssessmentItem against it.
+// configQuestionIds seeds the config (if it doesn't exist yet); attemptQuestionIds is this attempt's
+// questionsOverride — kept separate because independent/placement checks shuffle a subset of the
+// pool per attempt while the config itself stores the full pool.
+async function startAutoAttempt(
+  ownerId,
+  conceptId,
+  { kind, title, passScore, configQuestionIds, attemptQuestionIds, independentCheck }
+) {
+  let config = await AssessmentConfigItem.findOne({ concept: conceptId, kind, status: 'active' });
+  if (!config) {
+    config = await AssessmentConfigItem.create({
+      owner: ownerId,
+      createdBy: ownerId,
+      title,
+      concept: conceptId,
+      kind,
+      questions: configQuestionIds,
+      passScore,
+    });
+  }
+
+  const attempt = {
+    owner: ownerId,
+    createdBy: ownerId,
+    assessmentConfig: config._id,
+    concept: conceptId,
+    questionsOverride: attemptQuestionIds,
+  };
+  if (independentCheck) attempt.independentCheck = true;
+  return AssessmentItem.create(attempt);
+}
+
 // UC-ASM-12 (BR-15): an independent check reuses the concept's own active question pool rather than
 // generating new ones live, so a student can prove mastery without AI assistance on demand.
 // shortcut: pulls from the existing pool instead of asking AI for genuinely novel variants; upgrade:
 // wire in aiAssistService.generateQuestion once bulk-generation + admin auto-approval exists.
 async function startIndependentCheck(ownerId, conceptId) {
-  let config = await AssessmentConfigItem.findOne({
-    concept: conceptId,
-    kind: 'independent_check',
-    status: 'active',
-  });
   const pool = await QuestionItem.find({ concept: conceptId, status: 'active' }).limit(10);
   if (pool.length === 0) throw ApiError.badRequest('No active questions for this concept yet', 'EMPTY_POOL');
 
-  if (!config) {
-    config = await AssessmentConfigItem.create({
-      owner: ownerId,
-      createdBy: ownerId,
-      title: 'Independent check (auto)',
-      concept: conceptId,
-      kind: 'independent_check',
-      questions: pool.map((q) => q._id),
-      passScore: 50,
-    });
-  }
+  const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(5, pool.length));
+  return startAutoAttempt(ownerId, conceptId, {
+    kind: 'independent_check',
+    title: 'Independent check (auto)',
+    passScore: 50,
+    configQuestionIds: pool.map((q) => q._id),
+    attemptQuestionIds: shuffled.map((q) => q._id),
+    independentCheck: true,
+  });
+}
+
+// B5 (doc v2.1): baseline/"bài đầu vào" — same auto-create-config-if-missing shape as
+// startIndependentCheck, but kind:'placement' and ungated (passScore 0; submit() already
+// special-cases kind==='placement' to seed Mastery via initializeFromPlacement, so there's no
+// pass/fail concept here, only diagnostic data).
+async function startPlacementCheck(ownerId, conceptId) {
+  const pool = await QuestionItem.find({ concept: conceptId, status: 'active' }).limit(10);
+  if (pool.length === 0) throw ApiError.badRequest('No active questions for this concept yet', 'EMPTY_POOL');
 
   const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(5, pool.length));
-  return AssessmentItem.create({
-    owner: ownerId,
-    createdBy: ownerId,
-    assessmentConfig: config._id,
-    concept: conceptId,
-    questionsOverride: shuffled.map((q) => q._id),
-    independentCheck: true,
+  return startAutoAttempt(ownerId, conceptId, {
+    kind: 'placement',
+    title: 'Bài đầu vào (auto)',
+    passScore: 0,
+    configQuestionIds: pool.map((q) => q._id),
+    attemptQuestionIds: shuffled.map((q) => q._id),
+  });
+}
+
+// Sổ câu sai (wrong-item notebook): a practice attempt scoped to every question currently 'open'
+// in the student's notebook for this concept — same questionsOverride mechanism as UC-ASM-13,
+// just sourced from the notebook instead of one previous attempt.
+// wrongItemIds (optional, N2): when given, scopes the attempt to exactly those selected rows
+// instead of every open item for the concept — see wrong-item.service.getQuestionIdsForRetry.
+async function startRetryFromWrongItems(ownerId, conceptId, wrongItemIds) {
+  let concept = conceptId;
+  let attemptQuestionIds;
+  if (wrongItemIds && wrongItemIds.length > 0) {
+    const picked = await wrongItemService.getQuestionIdsForRetry(ownerId, wrongItemIds);
+    concept = picked.concept;
+    attemptQuestionIds = picked.questionIds;
+  } else {
+    attemptQuestionIds = await wrongItemService.buildRetryQuestionIds(ownerId, { concept: conceptId });
+  }
+  if (!attemptQuestionIds || attemptQuestionIds.length === 0)
+    throw ApiError.badRequest('No wrong items to retry', 'NOTHING_TO_RETRY');
+
+  // The config's own question pool always covers every open item for the concept (so the practice
+  // config stays reusable), independent of how narrow this one attempt's selection is.
+  const configQuestionIds = await wrongItemService.buildRetryQuestionIds(ownerId, { concept });
+
+  return startAutoAttempt(ownerId, concept, {
+    kind: 'practice',
+    title: 'Ôn lại câu sai (auto)',
+    passScore: 50,
+    configQuestionIds: configQuestionIds.length > 0 ? configQuestionIds : attemptQuestionIds,
+    attemptQuestionIds,
+  });
+}
+
+// Practice Hub P5 ("Câu hỏi nhanh"): picks `count` active MCQ/T-F questions (scoped to a concept
+// subtree if provided, or across all active questions) and starts a quick practice attempt.
+async function startQuickQuiz(ownerId, { concept, count = 5 } = {}) {
+  let filter = { status: 'active', type: { $in: ['mcq', 'true_false'] } };
+  if (concept) {
+    const ids = await knowledgeService.getDescendantIds(concept);
+    filter.concept = { $in: ids.length > 0 ? ids : [concept] };
+  }
+  const pool = await QuestionItem.find(filter).limit(50);
+  if (pool.length === 0) {
+    throw ApiError.badRequest('Chưa có câu hỏi trắc nghiệm khả dụng cho phạm vi này', 'EMPTY_POOL');
+  }
+  const picked = [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(count, pool.length));
+  const resolvedConcept = concept || picked[0].concept;
+  return startAutoAttempt(ownerId, resolvedConcept, {
+    kind: 'practice',
+    title: 'Câu hỏi nhanh (auto)',
+    passScore: 50,
+    configQuestionIds: pool.map((q) => q._id),
+    attemptQuestionIds: picked.map((q) => q._id),
   });
 }
 
@@ -315,7 +445,9 @@ async function regradeAffected(questionId, actorId) {
     // eslint-disable-next-line no-await-in-loop
     await attempt.save();
     // eslint-disable-next-line no-await-in-loop
-    await masteryService.upsertForAttempt(attempt.owner, attempt.concept, score, 'regrade');
+    await masteryService.upsertForAttempt(attempt.owner, attempt.concept, score, 'regrade', {
+      evidenceType: config.kind,
+    });
     results.push({ assessment: attempt._id, newScore: score });
   }
   return { questionId, regradedCount: results.length, results };
@@ -339,7 +471,10 @@ module.exports = {
   saveDraft,
   submit,
   startRetryWrong,
+  startRetryFromWrongItems,
   startIndependentCheck,
+  startPlacementCheck,
+  startQuickQuiz,
   regradeAffected,
   previewRegradeImpact,
 };

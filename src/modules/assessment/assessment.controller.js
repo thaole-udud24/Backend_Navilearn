@@ -8,7 +8,7 @@ const startCtrl = asyncHandler(async (req, res) => {
 });
 
 const listCtrl = asyncHandler(async (req, res) => {
-  const { items, meta } = await service.listForOwner(req.user.id, req.query);
+  const { items, meta } = await service.listForOwner(req.user.id, req.query, req.user);
   return ok(res, items, 'OK', meta);
 });
 
@@ -57,6 +57,21 @@ const independentCheckCtrl = asyncHandler(async (req, res) => {
   return created(res, item);
 });
 
+const placementCheckCtrl = asyncHandler(async (req, res) => {
+  const item = await service.startPlacementCheck(req.user.id, req.body.concept);
+  return created(res, item);
+});
+
+const retryWrongItemsCtrl = asyncHandler(async (req, res) => {
+  const item = await service.startRetryFromWrongItems(req.user.id, req.body.concept, req.body.wrongItemIds);
+  return created(res, item);
+});
+
+const quickQuizCtrl = asyncHandler(async (req, res) => {
+  const item = await service.startQuickQuiz(req.user.id, req.body);
+  return created(res, item);
+});
+
 module.exports = {
   startCtrl,
   listCtrl,
@@ -69,4 +84,7 @@ module.exports = {
   submitCtrl,
   retryWrongCtrl,
   independentCheckCtrl,
+  placementCheckCtrl,
+  retryWrongItemsCtrl,
+  quickQuizCtrl,
 };
