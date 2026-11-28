@@ -5,7 +5,7 @@ const {
   resetRuleSchema,
   idParamsSchema,
 } = require('./business-rule.validation');
-const { assertValidValue } = require('./business-rule.service');
+const { assertValidValue, DEFAULT_RISK_THRESHOLDS } = require('./business-rule.service');
 
 describe('business-rule module', () => {
   it('parsePagination defaults page=1 limit=20', () => {
@@ -90,5 +90,42 @@ describe('business-rule module', () => {
 
   it('accepts a custom ruleCode value matching its defaultValue type', () => {
     expect(() => assertValidValue('BR-99-CUSTOM', 20, 10)).not.toThrow();
+  });
+
+  // B14: BR-17-FALLING-BEHIND is now a % completion-gap threshold (N9's schedule-risk check), not a
+  // raw day count — confirm the validator was updated to match.
+  it('validates BR-17-FALLING-BEHIND as a percentage (0, 100]', () => {
+    expect(() => assertValidValue('BR-17-FALLING-BEHIND', 15)).not.toThrow();
+    expect(() => assertValidValue('BR-17-FALLING-BEHIND', 0)).toThrow();
+    expect(() => assertValidValue('BR-17-FALLING-BEHIND', 150)).toThrow();
+  });
+
+  it('exposes real default risk thresholds for B14 to seed from', () => {
+    expect(DEFAULT_RISK_THRESHOLDS).toEqual({ 'risk.fallingBehindPercent': 15, 'risk.decayDays': 14 });
+  });
+});
+
+describe('getRiskThresholds (B14 → N9 wiring)', () => {
+  it('merges configured RISK/MASTERY rule values over the defaults', async () => {
+    const service = require('./business-rule.service');
+    const BusinessRule = require('./business-rule.model');
+    jest.spyOn(BusinessRule, 'countDocuments').mockResolvedValue(1); // skip re-seeding defaults
+    // getRiskThresholds and the getThresholds() it calls internally both query via BusinessRule.find —
+    // one mock covering every rule code needed by either read keeps this a single, simple stub.
+    jest.spyOn(BusinessRule, 'find').mockResolvedValue([
+      { ruleCode: 'BR-17-FALLING-BEHIND', value: 25 },
+      { ruleCode: 'BR-17-RETENTION-RISK', value: 10 },
+      { ruleCode: 'MST-LEVEL-DEVELOPING', value: 35 },
+    ]);
+
+    const result = await service.getRiskThresholds();
+    expect(result).toEqual({
+      'risk.fallingBehindPercent': 25,
+      'risk.decayDays': 10,
+      'risk.weakMasteryPercent': 35,
+    });
+
+    BusinessRule.find.mockRestore();
+    BusinessRule.countDocuments.mockRestore();
   });
 });

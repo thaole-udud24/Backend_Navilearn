@@ -1,5 +1,6 @@
 const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created, noContent } = require('../../utils/response');
+const { record } = require('../../shared/audit-log');
 const service = require('./knowledge.service');
 const templates = require('./knowledge.template.service');
 
@@ -35,11 +36,18 @@ const removeCtrl = asyncHandler(async (req, res) => {
 
 const importCtrl = asyncHandler(async (req, res) => {
   const report = await service.importBulk(req.user.id, req.body.items);
+  await record({
+    actorId: req.user.id,
+    action: 'knowledge.import',
+    targetType: 'Concept',
+    meta: { createdCount: report.createdCount, errorCount: report.errorCount },
+  });
   return ok(res, report, 'Import finished');
 });
 
 const exportCtrl = asyncHandler(async (req, res) => {
   const items = await service.exportAll();
+  await record({ actorId: req.user.id, action: 'knowledge.export', targetType: 'Concept', meta: { count: items.length } });
   return ok(res, items);
 });
 

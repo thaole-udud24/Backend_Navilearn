@@ -136,3 +136,34 @@ describe('knowledge getSubjectGraph()', () => {
     expect(result.map((c) => c._id)).toEqual(['K1', 'K2', 'K3']);
   });
 });
+
+describe('knowledge getDescendantLeafIds() (real-leaf-concept fix)', () => {
+  const Concept = require('./knowledge.model');
+  const { getDescendantLeafIds } = require('./knowledge.service');
+
+  it('returns only leaf ids under any given concept, not just a Subject root', async () => {
+    // S -> C1 -> K1, K2; S -> C2 -> K3
+    Concept.find
+      .mockReturnValueOnce(queryStub([{ _id: 'C1' }, { _id: 'C2' }])) // getDescendantIds: children of S
+      .mockReturnValueOnce(queryStub([{ _id: 'K1' }, { _id: 'K2' }, { _id: 'K3' }])) // children of C1/C2
+      .mockReturnValueOnce(queryStub([])) // children of K1/K2/K3 -> none
+      .mockReturnValueOnce(
+        queryStub([
+          { parentConcept: 'S' },
+          { parentConcept: 'S' },
+          { parentConcept: 'C1' },
+          { parentConcept: 'C1' },
+          { parentConcept: 'C2' },
+        ]),
+      ); // parentIds lookup
+
+    expect(await getDescendantLeafIds('S')).toEqual(['K1', 'K2', 'K3']);
+  });
+
+  it('treats a concept with no children as its own single leaf', async () => {
+    Concept.find
+      .mockReturnValueOnce(queryStub([])) // no children
+      .mockReturnValueOnce(queryStub([])); // nothing has it as a parent
+    expect(await getDescendantLeafIds('leafOnly')).toEqual(['leafOnly']);
+  });
+});

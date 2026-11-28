@@ -16,22 +16,24 @@ const DEFAULT_RULES = [
   },
   {
     ruleCode: 'BR-17-FALLING-BEHIND',
-    name: 'Ngưỡng phát hiện Falling Behind (chậm tiến độ)',
+    name: 'Ngưỡng trễ tiến độ (chặng so với kế hoạch)',
     category: 'RISK',
-    value: 3,
-    defaultValue: 3,
-    unit: 'ngày',
-    description: 'Số ngày chậm so với kế hoạch học tập đề ra để hệ thống kích hoạt cảnh báo Falling Behind.',
+    value: 15,
+    defaultValue: 15,
+    unit: '%',
+    description:
+      'Chênh lệch tối thiểu (điểm %) giữa tiến độ dự kiến theo lịch và tiến độ thực tế hoàn thành của một chặng để hệ thống sinh Cảnh báo rủi ro (N9, BR-13).',
     isActive: true,
   },
   {
     ruleCode: 'BR-17-RETENTION-RISK',
     name: 'Ngưỡng phát hiện Retention Risk (nguy cơ quên kiến thức)',
     category: 'RISK',
-    value: 7,
-    defaultValue: 7,
+    value: 14,
+    defaultValue: 14,
     unit: 'ngày',
-    description: 'Số ngày không ôn tập lại một khái niệm dẫn tới nguy cơ rơi vào trạng thái DECAY_RISK.',
+    description:
+      'Số ngày không ôn tập lại một khái niệm dẫn tới nguy cơ rơi vào trạng thái DECAY_RISK (dùng cả cho hiển thị Learning State và Cảnh báo rủi ro N9).',
     isActive: true,
   },
   {
@@ -141,6 +143,29 @@ async function getThresholds() {
   return result;
 }
 
+// B14: ngưỡng cảnh báo rủi ro (N9) — reuses the RISK-category BR-17 rules above, plus the MASTERY
+// "mastery yếu" threshold (same number the Learning-State display already uses for the 'developing'
+// cutoff — one real threshold, read for two purposes, instead of a duplicate rule).
+const RISK_THRESHOLD_RULE_CODES = {
+  'risk.fallingBehindPercent': 'BR-17-FALLING-BEHIND',
+  'risk.decayDays': 'BR-17-RETENTION-RISK',
+};
+const DEFAULT_RISK_THRESHOLDS = { 'risk.fallingBehindPercent': 15, 'risk.decayDays': 14 };
+
+async function getRiskThresholds() {
+  await ensureDefaultRules();
+  const codes = Object.values(RISK_THRESHOLD_RULE_CODES);
+  const rows = await BusinessRule.find({ ruleCode: { $in: codes } });
+  const byCode = Object.fromEntries(rows.map((r) => [r.ruleCode, r.value]));
+  const result = { ...DEFAULT_RISK_THRESHOLDS };
+  for (const [key, code] of Object.entries(RISK_THRESHOLD_RULE_CODES)) {
+    if (byCode[code] !== undefined) result[key] = byCode[code];
+  }
+  const mastery = await getThresholds();
+  result['risk.weakMasteryPercent'] = mastery['mastery.developing'];
+  return result;
+}
+
 // default rule if not exist in db
 async function ensureDefaultRules() {
   const count = await BusinessRule.countDocuments();
@@ -190,7 +215,7 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 const RULE_VALIDATORS = {
   'BR-15': (v) => (isNum(v) && v > 0 && v <= 1) || 'Ngưỡng AI_Help_Ratio phải trong (0, 1]',
-  'BR-17-FALLING-BEHIND': (v) => (Number.isInteger(v) && v >= 1) || 'Phải là số nguyên >= 1',
+  'BR-17-FALLING-BEHIND': (v) => (isNum(v) && v > 0 && v <= 100) || 'Phải trong khoảng (0, 100]',
   'BR-17-RETENTION-RISK': (v) => (Number.isInteger(v) && v >= 1) || 'Phải là số nguyên >= 1',
   'BR-17-PREREQUISITE': (v) => (isNum(v) && v >= 0 && v <= 100) || 'Phải trong khoảng 0-100',
   'BR-05-MASTERY-THRESHOLD': (v) => (isNum(v) && v >= 0 && v <= 100) || 'Phải trong khoảng 0-100',
@@ -351,4 +376,7 @@ module.exports = {
   assertValidValue,
   getThresholds,
   DEFAULT_THRESHOLDS,
+  getRiskThresholds,
+  DEFAULT_RISK_THRESHOLDS,
+  RISK_THRESHOLD_RULE_CODES,
 };

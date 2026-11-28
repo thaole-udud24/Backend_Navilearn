@@ -191,12 +191,44 @@ async function getSubjectGraph(subjectId) {
     .populate('parentConcept', 'name');
 }
 
+// A root concept ("môn học") plus every node under it — used wherever something is scoped to a
+// whole subject but needs to validate against content tagged at the deeper Chapter/Topic/Concept
+// level (e.g. plan-template's assertStepQuestionsValid), since real questions are never tagged at
+// the root itself.
+async function getDescendantIds(conceptId) {
+  const allIds = [conceptId];
+  let frontier = [conceptId];
+  while (frontier.length) {
+    // eslint-disable-next-line no-await-in-loop
+    const children = await Concept.find({ parentConcept: { $in: frontier } }, '_id');
+    frontier = children.map((c) => c._id);
+    allIds.push(...frontier);
+  }
+  return allIds;
+}
+
+// Leaf-only descendant ids under ANY concept (not just a Subject root like getSubjectGraph) — same
+// "has no children of its own" definition, generalized for callers that need the real bottom-of-tree
+// Concept set under an arbitrary scope: AI plan generation's per-session leaf tagging, and a plan's
+// real curriculum-coverage % against its goal's subject (planning.service.computeCoverage).
+async function getDescendantLeafIds(conceptId) {
+  const allIds = await getDescendantIds(conceptId);
+  const parentIds = new Set(
+    (await Concept.find({ parentConcept: { $in: allIds } }, 'parentConcept')).map((c) =>
+      String(c.parentConcept),
+    ),
+  );
+  return allIds.filter((id) => !parentIds.has(String(id)));
+}
+
 module.exports = {
   create,
   list,
   getById,
   update,
   updateStatus,
+  getDescendantIds,
+  getDescendantLeafIds,
   remove,
   importBulk: importBulkConcepts,
   exportAll,
