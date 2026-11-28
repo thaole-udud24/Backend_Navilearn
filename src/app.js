@@ -28,6 +28,18 @@ app.use(
   express.static(path.resolve(env.STORAGE_UPLOAD_DIR, 'avatars')),
 );
 
+// N11: admin-report screenshot attachments — same public-static treatment as avatars (small,
+// non-sensitive images the admin triage view displays directly), not the private/authenticated
+// path student-document/asset uploads are meant for.
+app.use(
+  '/uploads/admin-report-attachments',
+  (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  },
+  express.static(path.resolve(env.STORAGE_UPLOAD_DIR, 'admin-report-attachments')),
+);
+
 app.use('/api/v1', routes);
 
 app.use(notFound);
