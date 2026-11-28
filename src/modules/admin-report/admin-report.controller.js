@@ -4,7 +4,7 @@ const service = require('./admin-report.service');
 const { ROLES } = require('../../shared/roles');
 
 const createCtrl = asyncHandler(async (req, res) => {
-  const item = await service.create(req.user.id, req.body);
+  const item = await service.create(req.user.id, req.body, req.file);
   return created(res, item);
 });
 
@@ -31,4 +31,10 @@ const removeCtrl = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
-module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl };
+// B10: admin reply.
+const respondCtrl = asyncHandler(async (req, res) => {
+  const item = await service.respond(req.params.id, req.user.id, req.body.message);
+  return ok(res, item, 'Reply sent');
+});
+
+module.exports = { createCtrl, listCtrl, getCtrl, updateStatusCtrl, removeCtrl, respondCtrl };
