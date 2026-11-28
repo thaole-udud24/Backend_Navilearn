@@ -37,6 +37,11 @@ const archiveCtrl = asyncHandler(async (req, res) => {
   return ok(res, item, 'Plan template archived');
 });
 
+const syncLessonCtrl = asyncHandler(async (req, res) => {
+  const item = await service.syncStepFromLesson(req.params.id, req.params.stepIndex, req.user.id);
+  return ok(res, item, 'Step synced from lesson');
+});
+
 const applyCtrl = asyncHandler(async (req, res) => {
   const plan = await service.apply(req.user.id, req.params.id, req.body.goalId);
   return created(res, plan, 'Plan proposed from template');
@@ -60,6 +65,7 @@ module.exports = {
   removeCtrl,
   publishCtrl,
   archiveCtrl,
+  syncLessonCtrl,
   applyCtrl,
   importCtrl,
   exportCtrl,

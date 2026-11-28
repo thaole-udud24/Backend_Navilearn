@@ -8,6 +8,7 @@ const {
   updateSchema,
   listQuerySchema,
   idParamsSchema,
+  stepLessonParamsSchema,
   applySchema,
   publishSchema,
   importSchema,
@@ -45,6 +46,13 @@ router.patch(
   authorize(ROLES.ADMIN),
   validate(idParamsSchema, 'params'),
   ctrl.archiveCtrl,
+);
+
+router.post(
+  '/:id/steps/:stepIndex/sync-lesson',
+  authorize(ROLES.ADMIN),
+  validate(stepLessonParamsSchema, 'params'),
+  ctrl.syncLessonCtrl,
 );
 
 router.post(

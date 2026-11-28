@@ -21,6 +21,12 @@ const stepSchema = new mongoose.Schema(
     // questions to check understanding before the student can mark it done.
     theoryContent: { type: String, trim: true, maxlength: 8000, default: '' },
     questions: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'QuestionItem' }], default: [] },
+    // Optional link to a Thư viện bài học lesson this step was authored from (traceability + "sync
+    // lại" capability) — purely a reference, not the live source of truth: objectives/theoryContent/
+    // questions above are always a snapshot copied from the lesson at save/sync time (same
+    // reference-vs-snapshot tradeoff as question-bank questions embedded by id elsewhere), so a step
+    // keeps working unchanged (e.g. in plan-template.apply()) even if the lesson later changes.
+    lessonId: { type: mongoose.Schema.Types.ObjectId, ref: 'LessonItem', default: null },
   },
   { _id: false },
 );

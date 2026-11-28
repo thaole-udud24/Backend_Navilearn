@@ -3,10 +3,13 @@ const { parsePagination, buildMeta } = require('../../utils/pagination');
 const importBulk = require('../../utils/importBulk');
 const PlanTemplateItem = require('./plan-template.model');
 const Concept = require('../knowledge/knowledge.model');
+const knowledgeService = require('../knowledge/knowledge.service');
 const QuestionItem = require('../question-bank/question-bank.model');
+const LessonItem = require('../lesson/lesson.model');
 const User = require('../account/account.auth.model');
 const planningService = require('../planning/planning.service');
 const { createSchema } = require('./plan-template.validation');
+const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
 
 async function assertConceptExists(conceptId) {
   if (!conceptId) return;
@@ -25,20 +28,61 @@ async function assertStepQuestionsValid(conceptId, steps) {
   if (questions.length !== questionIds.length) {
     throw ApiError.badRequest('Một số câu hỏi trong lộ trình không tồn tại', 'QUESTION_NOT_FOUND');
   }
-  if (conceptId && questions.some((q) => String(q.concept) !== String(conceptId))) {
-    throw ApiError.badRequest(
-      'Tất cả câu hỏi trong lộ trình phải thuộc đúng kiến thức của lộ trình mẫu',
-      'QUESTION_CONCEPT_MISMATCH',
-    );
+  if (conceptId) {
+    // Real questions are tagged at the leaf Concept level, never at a root "môn học" — so a
+    // template scoped to a whole subject must accept any question under that subject's subtree,
+    // not just ones tagged with the exact same id (that exact-match used to force every real
+    // subject-level template to be saved with concept: null just to get past this check).
+    const allowedIds = new Set((await knowledgeService.getDescendantIds(conceptId)).map(String));
+    if (questions.some((q) => !allowedIds.has(String(q.concept)))) {
+      throw ApiError.badRequest(
+        'Tất cả câu hỏi trong lộ trình phải thuộc đúng kiến thức của lộ trình mẫu',
+        'QUESTION_CONCEPT_MISMATCH',
+      );
+    }
   }
+}
+
+// A step may optionally point at a Thư viện bài học lesson instead of being authored by hand. The
+// lesson is only ever a reference for traceability/"sync lại" — objectives/theoryContent/questions
+// are snapshotted from it into the step right here, at save time, so a template behaves exactly
+// like before everywhere else (apply(), student roadmap) even if the lesson changes later. Mirrors
+// the status-gating other modules use for similar refs (e.g. assessment-config's questions must be
+// published before being added).
+async function applyLessonSnapshots(steps) {
+  const lessonIds = [...new Set((steps ?? []).map((s) => s.lessonId).filter(Boolean).map(String))];
+  if (lessonIds.length === 0) return;
+  const lessons = await LessonItem.find({ _id: { $in: lessonIds } });
+  const lessonById = new Map(lessons.map((l) => [String(l._id), l]));
+  steps.forEach((step) => {
+    if (!step.lessonId) return;
+    const lesson = lessonById.get(String(step.lessonId));
+    if (!lesson) throw ApiError.badRequest('Lesson not found', 'LESSON_NOT_FOUND');
+    if (lesson.status !== 'published') {
+      throw ApiError.badRequest(
+        'Chỉ được chọn bài học đã xuất bản từ thư viện',
+        'LESSON_NOT_PUBLISHED',
+      );
+    }
+    step.objectives = lesson.objectives;
+    step.theoryContent = lesson.theoryContent;
+    step.questions = lesson.questions;
+  });
 }
 
 // Student sees only published templates; admin manages the full catalog (UC-PLN-TPL-01/02).
 async function listForRequester(requester, query) {
   const { page, limit, skip } = parsePagination(query);
+  const subjectIds = await resolveSubjectConceptIds(query.subjectId, requester);
   const filter =
     requester.role === 'admin' ? (query.status ? { status: query.status } : {}) : { status: 'published' };
-  if (query.concept) filter.concept = query.concept;
+  if (query.concept && subjectIds) {
+    filter.concept = subjectIds.some((id) => String(id) === String(query.concept)) ? query.concept : null;
+  } else if (query.concept) {
+    filter.concept = query.concept;
+  } else if (subjectIds) {
+    filter.concept = { $in: subjectIds };
+  }
   const [items, total] = await Promise.all([
     PlanTemplateItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('concept', 'name'),
     PlanTemplateItem.countDocuments(filter),
@@ -63,6 +107,7 @@ async function getById(id) {
 
 async function create(requesterId, data) {
   await assertConceptExists(data.concept);
+  await applyLessonSnapshots(data.steps);
   await assertStepQuestionsValid(data.concept, data.steps);
   return PlanTemplateItem.create({ ...data, createdBy: requesterId });
 }
@@ -71,6 +116,7 @@ async function update(id, requesterId, data) {
   await assertConceptExists(data.concept);
   const item = await getById(id);
   if (data.steps) {
+    await applyLessonSnapshots(data.steps);
     const effectiveConcept = data.concept !== undefined ? data.concept : (item.concept?._id ?? item.concept);
     await assertStepQuestionsValid(effectiveConcept, data.steps);
   }
@@ -115,22 +161,31 @@ async function apply(ownerId, templateId, goalId) {
   const template = await getById(templateId);
   if (template.status !== 'published') throw ApiError.conflict('This template is no longer available');
 
-  let concept = template.concept?._id ?? template.concept;
+  let fallbackConcept = template.concept?._id ?? template.concept;
   if (goalId) {
     const goal = await planningService.getOwnedGoal(goalId, { id: ownerId });
-    concept = goal.concept;
+    fallbackConcept = goal.concept;
   }
-  if (!concept)
+  if (!fallbackConcept)
     throw ApiError.badRequest(
       'No concept to apply this template to — pick a goal or a concept-specific template',
       'NO_CONCEPT',
     );
 
+  // Real leaf concept per session: a step linked to a Thư viện bài học lesson inherits THAT lesson's
+  // own leaf Concept (set by the Admin when authoring it) instead of the template's root subject —
+  // only steps with no `lessonId` (ad-hoc/manual content) keep the root concept, since there's no
+  // reliable leaf concept for those (plan-template.model's stepSchema/concept comment).
+  const lessonIds = [...new Set(template.steps.map((s) => s.lessonId).filter(Boolean).map(String))];
+  const lessons = lessonIds.length ? await LessonItem.find({ _id: { $in: lessonIds } }) : [];
+  const conceptByLessonId = new Map(lessons.map((l) => [String(l._id), l.concept]));
+
   const sessions = template.steps.map(
-    ({ dayOffset, durationMin, title, chapterTitle, note, objectives, theoryContent, questions }) => {
+    ({ dayOffset, durationMin, title, chapterTitle, note, objectives, theoryContent, questions, lessonId }) => {
       const startAt = new Date();
       startAt.setDate(startAt.getDate() + dayOffset);
       startAt.setHours(19, 0, 0, 0);
+      const concept = (lessonId && conceptByLessonId.get(String(lessonId))) || fallbackConcept;
       return {
         concept,
         startAt,
@@ -141,6 +196,7 @@ async function apply(ownerId, templateId, goalId) {
         objectives,
         theoryContent,
         questions,
+        lessonId: lessonId ?? null,
       };
     },
   );
@@ -148,8 +204,29 @@ async function apply(ownerId, templateId, goalId) {
   return planningService.create(ownerId, {
     title: `${template.title} (từ lộ trình mẫu)`,
     status: 'proposed',
+    goal: goalId ?? null,
     sessions,
   });
+}
+
+// Re-copies the current published lesson content into an already-linked step — useful once the
+// library lesson is edited after a template step snapshotted it (UC: "Đồng bộ lại" in the builder).
+async function syncStepFromLesson(id, stepIndex, requesterId) {
+  const item = await getById(id);
+  const step = item.steps[stepIndex];
+  if (!step) throw ApiError.notFound('Step not found');
+  if (!step.lessonId) throw ApiError.badRequest('Buổi học này chưa liên kết bài học nào', 'STEP_NO_LESSON');
+  const lesson = await LessonItem.findById(step.lessonId);
+  if (!lesson) throw ApiError.badRequest('Lesson not found', 'LESSON_NOT_FOUND');
+  if (lesson.status !== 'published') {
+    throw ApiError.badRequest('Chỉ được đồng bộ từ bài học đã xuất bản', 'LESSON_NOT_PUBLISHED');
+  }
+  step.objectives = lesson.objectives;
+  step.theoryContent = lesson.theoryContent;
+  step.questions = lesson.questions;
+  item.updatedBy = requesterId;
+  await item.save();
+  return item;
 }
 
 async function importBulkTemplates(requesterId, rows) {
@@ -172,6 +249,7 @@ module.exports = {
   publish,
   archive,
   apply,
+  syncStepFromLesson,
   importBulk: importBulkTemplates,
   exportAll,
 };

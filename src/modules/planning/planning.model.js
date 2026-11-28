@@ -24,6 +24,10 @@ const sessionSchema = new mongoose.Schema({
   // Gate: a session that carries questions can't be marked done until its quiz is passed (see
   // planning.service.updateSession / submitSessionQuiz).
   quizPassed: { type: Boolean, default: false },
+  // Traceability link back to LessonItem when created from a template step or manual lesson pick.
+  lessonId: { type: mongoose.Schema.Types.ObjectId, ref: 'LessonItem', default: null },
+  // Synced bookmark toggle on LearningRoadmap StageInspectorPanel.
+  bookmarked: { type: Boolean, default: false },
 });
 
 const planSchema = new mongoose.Schema(
@@ -31,6 +35,11 @@ const planSchema = new mongoose.Schema(
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true, maxlength: 200 },
     status: { type: String, enum: ['proposed', 'active', 'superseded'], default: 'active' },
+    // Which exam goal this plan serves (PATH_INSTANCE.goal_id in the business doc's data model,
+    // §2) — direct link instead of the old "session.concept === goal.concept" heuristic, which broke
+    // whenever a student had 2+ goals on related subjects. Nullable/optional: plans created before
+    // this field existed have no goal and keep working (coverage just can't be computed for them).
+    goal: { type: mongoose.Schema.Types.ObjectId, ref: 'PlanningGoal', default: null },
     replaces: { type: mongoose.Schema.Types.ObjectId, ref: 'PlanningItem', default: null },
     reason: { type: String, trim: true, maxlength: 500 }, // why ADP proposed this plan (UC-ADP-03)
 
