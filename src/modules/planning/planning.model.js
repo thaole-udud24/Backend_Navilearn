@@ -34,7 +34,7 @@ const planSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true, maxlength: 200 },
-    status: { type: String, enum: ['proposed', 'active', 'superseded'], default: 'active' },
+    status: { type: String, enum: ['proposed', 'active', 'superseded', 'paused'], default: 'active' },
     // Which exam goal this plan serves (PATH_INSTANCE.goal_id in the business doc's data model,
     // §2) — direct link instead of the old "session.concept === goal.concept" heuristic, which broke
     // whenever a student had 2+ goals on related subjects. Nullable/optional: plans created before

@@ -79,7 +79,7 @@ async function changePassword(userId, currentSid, { currentPassword, newPassword
 
 /** BIZ-ACC-03 */
 async function listSessions(userId, currentSid) {
-  const items = await Session.find({ user: userId }).sort({ lastUsedAt: -1 });
+  const items = await Session.find({ user: userId }).sort({ lastUsedAt: -1 }).limit(5);
   return items.map((s) => ({
     id: s.id,
     userAgent: s.userAgent,

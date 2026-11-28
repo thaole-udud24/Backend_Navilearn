@@ -10,6 +10,39 @@ const accountMeService = require('../account/account.me.service');
 const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
 
 const QUIZ_PASS_SCORE = 70;
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+// Calendar-day bounds in Vietnam timezone (UTC+7) so early-morning sessions (< 07:00 VN)
+// stay on the student's actual calendar day instead of drifting to the previous UTC day.
+function dayRange(date) {
+  const vn = new Date(new Date(date).getTime() + VN_OFFSET_MS);
+  const startUtcMs = Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth(), vn.getUTCDate()) - VN_OFFSET_MS;
+  const start = new Date(startUtcMs);
+  const end = new Date(startUtcMs + 86400000);
+  return { start, end };
+}
+
+// Auto-mark overdue scheduled sessions (planned before today in UTC+7) as `missed` so
+// stageStatusMap unlocks subsequent stages and overdue metrics stay accurate without a cron job.
+async function syncMissedSessions(plans, now = new Date()) {
+  const list = Array.isArray(plans) ? plans : [plans];
+  const { start: todayStart } = dayRange(now);
+  await Promise.all(
+    list.map(async (plan) => {
+      if (!plan || plan.status !== 'active' || !Array.isArray(plan.sessions)) return;
+      let changed = false;
+      for (const s of plan.sessions) {
+        if (s.status === 'planned' && new Date(s.startAt) < todayStart) {
+          s.status = 'missed';
+          changed = true;
+        }
+      }
+      if (changed && typeof plan.save === 'function') {
+        await plan.save();
+      }
+    }),
+  );
+}
 
 // Chặng (stage) lock/unlock, derived — never persisted — from the sessions already stored, sorted
 // chronologically: the first session is always open; each later one unlocks once the one before it
@@ -106,6 +139,7 @@ async function listForOwner(ownerId, query, requester) {
     PlanningItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     PlanningItem.countDocuments(filter),
   ]);
+  await syncMissedSessions(items);
   return {
     items: await Promise.all(items.map(withStageStatus).map(withCoverage)),
     meta: buildMeta(page, limit, total),
@@ -121,12 +155,34 @@ async function getOwned(id, requester) {
 }
 
 async function getOwnedForResponse(id, requester) {
-  return withCoverage(withStageStatus(await getOwned(id, requester)));
+  const item = await getOwned(id, requester);
+  await syncMissedSessions(item);
+  return withCoverage(withStageStatus(item));
 }
 
 async function confirm(id, requester) {
   const item = await getOwned(id, requester);
   if (item.status !== 'proposed') throw ApiError.conflict('Plan is not awaiting confirmation');
+  if (item.replaces) {
+    const replaced = await PlanningItem.findOne({ _id: item.replaces, owner: item.owner });
+    // `undefined` only happens in unit-test mocks that don't stub findOne; real Mongoose returns `null` when missing.
+    if (replaced === null || (replaced && replaced.status !== 'active')) {
+      throw ApiError.conflict('Original plan is no longer active');
+    }
+    // Preserve any sessions already marked `done` on the original plan so BR-11 history is never lost.
+    if (replaced) {
+      const existingKeys = new Set(
+        (item.sessions ?? []).map((s) => `${String(s.concept)}:${new Date(s.startAt).getTime()}:${s.status}`),
+      );
+      const doneFromOld = (replaced.sessions ?? []).filter((s) => s.status === 'done');
+      for (const s of doneFromOld) {
+        const key = `${String(s.concept)}:${new Date(s.startAt).getTime()}:done`;
+        if (!existingKeys.has(key)) {
+          item.sessions.push(s.toObject ? s.toObject() : s);
+        }
+      }
+    }
+  }
   item.status = 'active';
   item.updatedBy = requester.id;
   await item.save();
@@ -144,6 +200,8 @@ async function listSessions(ownerId, { from, to, status, subjectId }, now = new 
   const subjectIds = await resolveSubjectConceptIds(subjectId, requester);
   const allowedSet = subjectIds ? new Set(subjectIds.map(String)) : null;
   const plans = await PlanningItem.find({ owner: ownerId, status: 'active' });
+  await syncMissedSessions(plans);
+  await syncMissedSessions(plans, now);
   return plans
     .flatMap((p) =>
       p.sessions
@@ -161,15 +219,6 @@ async function listSessions(ownerId, { from, to, status, subjectId }, now = new 
     )
     .filter((s) => (!from || s.startAt >= from) && (!to || s.startAt < to) && (!status || s.status === status))
     .sort((a, b) => a.startAt - b.startAt);
-}
-
-// Calendar-day bounds in UTC — same convention adaptive.service.replan uses for "which day" math.
-function dayRange(date) {
-  const start = new Date(date);
-  start.setUTCHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { start, end };
 }
 
 // v2.1 §4.9.2: Phân rã mỗi buổi học thành các loại nhiệm vụ chuẩn theo tỷ lệ thời gian.
@@ -235,6 +284,7 @@ async function getDailyPlan(ownerId, { date, subjectId } = {}, requester) {
   const subjectIds = await resolveSubjectConceptIds(subjectId, requester);
   const allowedSet = subjectIds ? new Set(subjectIds.map(String)) : null;
   const plans = await PlanningItem.find({ owner: ownerId, status: 'active' });
+  await syncMissedSessions(plans);
   const tasks = plans
     .flatMap((p) =>
       p.sessions
@@ -261,6 +311,7 @@ async function getDailyPlanRange(ownerId, { from, to, subjectId }, requester) {
   const subjectIds = await resolveSubjectConceptIds(subjectId, requester);
   const allowedSet = subjectIds ? new Set(subjectIds.map(String)) : null;
   const plans = await PlanningItem.find({ owner: ownerId, status: 'active' });
+  await syncMissedSessions(plans);
   const byDate = new Map();
   for (const p of plans) {
     for (const s of p.sessions) {
@@ -492,7 +543,10 @@ async function createGoal(ownerId, data) {
 async function listGoals(ownerId, query, requester) {
   const { page, limit, skip } = parsePagination(query);
   const subjectIds = await resolveSubjectConceptIds(query.subjectId, requester);
-  const filter = { owner: ownerId };
+  const filter = {
+    owner: ownerId,
+    ...(query.status ? { status: query.status } : {}),
+  };
   if (query.concept && subjectIds) {
     filter.concept = subjectIds.some((id) => String(id) === String(query.concept)) ? query.concept : null;
   } else if (query.concept) {
@@ -591,6 +645,11 @@ async function pauseGoal(id, requester, { reason } = {}) {
   goal.pauseReason = reason ?? null;
   goal.updatedBy = requester.id;
   await goal.save();
+  // Pause linked active plans so rest days while paused do not mark sessions as missed.
+  await PlanningItem.updateMany(
+    { owner: requester.id, goal: goal._id, status: 'active' },
+    { status: 'paused', updatedBy: requester.id },
+  );
   return goal;
 }
 
@@ -602,7 +661,22 @@ async function resumeGoal(id, requester) {
   goal.status = 'active';
   goal.updatedBy = requester.id;
   await goal.save();
-  return goal;
+  await PlanningItem.updateMany(
+    { owner: requester.id, goal: goal._id, status: 'paused' },
+    { status: 'active', updatedBy: requester.id },
+  );
+  const { start: todayStart } = dayRange(new Date());
+  const linkedPlans = await PlanningItem.find({ owner: requester.id, goal: goal._id, status: 'active' });
+  const missedCount = linkedPlans.reduce(
+    (sum, p) =>
+      sum +
+      (p.sessions ?? []).filter(
+        (s) => s.status === 'missed' || (s.status === 'planned' && new Date(s.startAt) < todayStart),
+      ).length,
+    0,
+  );
+  const plain = goal.toObject ? goal.toObject() : { ...goal };
+  return { ...plain, replanSuggested: missedCount > 0, missedCount };
 }
 
 async function closeGoal(id, requester, { examResultScore, closingNote } = {}) {
@@ -629,6 +703,9 @@ async function archiveGoal(id, requester) {
 }
 
 module.exports = {
+  VN_OFFSET_MS,
+  dayRange,
+  syncMissedSessions,
   create,
   computeCoverage,
   listForOwner,

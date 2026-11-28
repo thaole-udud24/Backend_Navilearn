@@ -131,10 +131,23 @@ describe('replan (AP-ADP-03)', () => {
     await expect(service.replan('u1', 'p1', now)).rejects.toMatchObject({ status: 409 });
   });
 
-  it('proposes a plan that puts the weaker concept first, one session per day from tomorrow', async () => {
+  it('proposes a plan that preserves done sessions and puts the weaker concept first from tomorrow', async () => {
     planningService.getOwned.mockResolvedValue(
       plan([
-        { concept: 'c1', startAt: at('2026-11-09T08:00:00Z'), durationMin: 30, status: 'planned' },
+        {
+          concept: 'c1',
+          startAt: at('2026-11-09T08:00:00Z'),
+          durationMin: 30,
+          status: 'planned',
+          title: 'Buổi 1',
+          chapterTitle: 'Chương 1',
+          objectives: ['Mục tiêu 1'],
+          theoryContent: 'Nội dung',
+          questions: ['q1'],
+          quizPassed: true,
+          lessonId: 'l1',
+          bookmarked: true,
+        },
         { concept: 'c2', startAt: at('2026-11-12T09:30:00Z'), durationMin: 45, status: 'planned' },
         { concept: 'c1', startAt: at('2026-11-08T08:00:00Z'), durationMin: 30, status: 'done' },
       ]),
@@ -142,11 +155,25 @@ describe('replan (AP-ADP-03)', () => {
     const { plan: proposed, reason } = await service.replan('u1', 'p1', now);
     expect(proposed.status).toBe('proposed');
     expect(proposed.replaces).toBe('p1');
-    expect(proposed.sessions.map((s) => s.concept)).toEqual(['c2', 'c1']);
-    expect(proposed.sessions.map((s) => s.startAt.toISOString())).toEqual([
+    // B10: done session is preserved; pending sessions are ranked weaker-first (c2 then c1)
+    expect(proposed.sessions.filter((s) => s.status === 'done').map((s) => s.concept)).toEqual(['c1']);
+    const pending = proposed.sessions.filter((s) => s.status === 'planned');
+    expect(pending.map((s) => s.concept)).toEqual(['c2', 'c1']);
+    expect(pending.map((s) => s.startAt.toISOString())).toEqual([
       '2026-11-11T09:30:00.000Z',
-      '2026-11-12T08:00:00.000Z',
+      '2026-11-11T08:45:00.000Z',
     ]);
+    // B1: metadata on rescheduled session is preserved
+    expect(pending[1]).toMatchObject({
+      title: 'Buổi 1',
+      chapterTitle: 'Chương 1',
+      objectives: ['Mục tiêu 1'],
+      theoryContent: 'Nội dung',
+      questions: ['q1'],
+      quizPassed: true,
+      lessonId: 'l1',
+      bookmarked: true,
+    });
     expect(reason).toBeTruthy();
     expect(proposed.reason).toBe(reason);
   });
@@ -159,7 +186,7 @@ describe('replan (AP-ADP-03)', () => {
     await service.replan('u1', 'p1', now);
     expect(notificationService.create).toHaveBeenCalledWith(
       'u1',
-      expect.objectContaining({ category: 'hoc_tap', link: '/student/goal-roadmap' }),
+      expect.objectContaining({ category: 'hoc_tap', link: '/student/planner' }),
     );
   });
 

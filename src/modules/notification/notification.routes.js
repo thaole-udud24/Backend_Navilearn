@@ -18,7 +18,8 @@ router.use(authenticate);
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
 router.post('/', authorize(ROLES.STUDENT), validate(createSchema), ctrl.createCtrl);
 // Literal paths before '/:id' so they aren't swallowed by the id param route.
-router.patch('/read-all', authorize(ROLES.STUDENT), ctrl.markAllReadCtrl);
+// Admins get their own notifications too (see Header's NotificationBell), so both roles may mark read.
+router.patch('/read-all', authorize(ROLES.STUDENT, ROLES.ADMIN), ctrl.markAllReadCtrl);
 // B9: admin compose + sent history.
 router.post('/broadcast', authorize(ROLES.ADMIN), validate(broadcastSchema), ctrl.broadcastCreateCtrl);
 router.get('/broadcasts', authorize(ROLES.ADMIN), ctrl.listBroadcastsCtrl);
@@ -32,7 +33,7 @@ router.patch(
 );
 router.patch(
   '/:id/read',
-  authorize(ROLES.STUDENT),
+  authorize(ROLES.STUDENT, ROLES.ADMIN),
   validate(idParamsSchema, 'params'),
   ctrl.markReadCtrl,
 );

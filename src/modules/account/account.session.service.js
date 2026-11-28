@@ -23,8 +23,20 @@ function signRefresh(user, sid) {
   });
 }
 
+const MAX_SESSIONS_PER_USER = 5;
+
+/** BIZ-ACC-03: only the 5 most recent sessions are kept per user — drop the rest on new login. */
+async function pruneOldSessions(userId) {
+  const stale = await Session.find({ user: userId })
+    .sort({ lastUsedAt: -1 })
+    .skip(MAX_SESSIONS_PER_USER - 1)
+    .select('_id');
+  if (stale.length) await Session.deleteMany({ _id: { $in: stale.map((s) => s._id) } });
+}
+
 /** Creates a session (one per login/device) and returns its token pair. */
 async function createSession(user, ctx = {}) {
+  await pruneOldSessions(user.id);
   const session = await Session.create({
     user: user.id,
     tokenHash: 'pending',
