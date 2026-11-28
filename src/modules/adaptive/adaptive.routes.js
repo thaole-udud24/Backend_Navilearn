@@ -11,6 +11,7 @@ const router = express.Router();
 // Personal learning data (BR-02/BR-35): student-only, admin has no access.
 router.use(authenticate, authorize(ROLES.STUDENT));
 router.get('/next-best-action', ctrl.nextBestActionCtrl);
+router.get('/priority-queue', ctrl.priorityQueueCtrl);
 router.post('/next-best-action/start', ctrl.startCtrl);
 router.get('/replan-check/:planId', validate(replanSchema, 'params'), ctrl.checkReplanCtrl);
 router.post('/replan', validate(replanSchema), ctrl.replanCtrl);

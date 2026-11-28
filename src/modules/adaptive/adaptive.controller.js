@@ -7,6 +7,11 @@ const nextBestActionCtrl = asyncHandler(async (req, res) => {
   return ok(res, action, action ? 'OK' : 'No activity to recommend yet');
 });
 
+const priorityQueueCtrl = asyncHandler(async (req, res) => {
+  const queue = await service.priorityQueue(req.user.id);
+  return ok(res, queue);
+});
+
 const startCtrl = asyncHandler(async (req, res) => {
   const result = await service.startNextBestAction(req.user.id);
   return created(res, result, 'Activity started');
@@ -22,4 +27,4 @@ const replanCtrl = asyncHandler(async (req, res) => {
   return created(res, result, 'Replan proposed');
 });
 
-module.exports = { nextBestActionCtrl, startCtrl, checkReplanCtrl, replanCtrl };
+module.exports = { nextBestActionCtrl, priorityQueueCtrl, startCtrl, checkReplanCtrl, replanCtrl };
