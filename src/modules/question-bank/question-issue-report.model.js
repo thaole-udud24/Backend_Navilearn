@@ -12,6 +12,11 @@ const questionIssueReportSchema = new mongoose.Schema(
     resolution: { type: String, trim: true, maxlength: 1000, default: '' },
     resolvedBy: { type: String, default: null },
     resolvedAt: { type: Date, default: null },
+    // B2 "Gửi phản hồi SV": admin's reply to the reporting student, also fanned out as a real
+    // NotificationItem (see question-bank.service.replyToIssueReport).
+    reply: { type: String, trim: true, maxlength: 1000, default: '' },
+    repliedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    repliedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

@@ -8,7 +8,9 @@ const AssessmentItem = require('../assessment/assessment.model');
 const assessmentService = require('../assessment/assessment.service');
 const Concept = require('../knowledge/knowledge.model');
 const AiAssistItem = require('../ai-assist/ai-assist.model');
+const NotificationItem = require('../notification/notification.model');
 const { ROLES } = require('../../shared/roles');
+const { resolveSubjectConceptIds } = require('../../shared/subjectFilter');
 
 const UPDATABLE_FIELDS = ['concept', 'type', 'text', 'options', 'referenceAnswer', 'difficulty', 'points'];
 
@@ -35,14 +37,21 @@ async function create(ownerId, data) {
 
 async function list(query, requester) {
   const { page, limit, skip } = parsePagination(query);
+  const subjectIds = await resolveSubjectConceptIds(query.subjectId, requester);
   const filter = {
-    ...(query.concept ? { concept: query.concept } : {}),
     ...(query.type ? { type: query.type } : {}),
     ...(query.difficulty ? { difficulty: query.difficulty } : {}),
     // Non-admins are always forced to 'active', ignoring any status they ask for — only admins
     // may pass their own status filter (or none, to see every status).
     status: requester.role === ROLES.ADMIN ? query.status : 'active',
   };
+  if (query.concept && subjectIds) {
+    filter.concept = subjectIds.some((id) => String(id) === String(query.concept)) ? query.concept : null;
+  } else if (query.concept) {
+    filter.concept = query.concept;
+  } else if (subjectIds) {
+    filter.concept = { $in: subjectIds };
+  }
   if (filter.status === undefined) delete filter.status;
   const [items, total] = await Promise.all([
     QuestionItem.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -199,6 +208,27 @@ async function resolveIssueReport(id, adminId, { action, resolution }) {
   return report;
 }
 
+// B2 "Gửi phản hồi SV": admin reply to the student who filed the report, saved on the report itself
+// and fanned out as a real NotificationItem (same model B9's broadcast uses) so the student sees it
+// in their own notifications — no parallel messaging system.
+async function replyToIssueReport(id, adminId, message) {
+  const report = await QuestionIssueReport.findById(id);
+  if (!report) throw ApiError.notFound('Issue report not found');
+  report.reply = message;
+  report.repliedBy = adminId;
+  report.repliedAt = new Date();
+  report.updatedBy = adminId;
+  await report.save();
+  await NotificationItem.create({
+    owner: report.reportedBy,
+    createdBy: adminId,
+    title: 'Phản hồi báo lỗi câu hỏi',
+    content: message,
+    category: 'he_thong',
+  });
+  return report;
+}
+
 // UC-QBK-11: correctness rate per question, derived from graded attempts, plus open issue-report counts.
 async function qualityStats({ concept }) {
   const matchQuestion = concept ? { concept: new mongoose.Types.ObjectId(concept) } : {};
@@ -279,6 +309,7 @@ module.exports = {
   reportIssue,
   listIssueReports,
   resolveIssueReport,
+  replyToIssueReport,
   qualityStats,
   findDuplicates,
   previewRegradeImpact,

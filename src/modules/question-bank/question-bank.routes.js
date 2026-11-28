@@ -15,6 +15,7 @@ const {
   reportIssueSchema,
   issueReportListQuerySchema,
   resolveIssueReportSchema,
+  replyIssueReportSchema,
   qualityStatsQuerySchema,
   duplicatesQuerySchema,
 } = require('./question-bank.validation');
@@ -52,6 +53,14 @@ router.patch(
   validate(idParamsSchema, 'params'),
   validate(resolveIssueReportSchema),
   ctrl.resolveIssueReportCtrl,
+);
+// B2 "Gửi phản hồi SV".
+router.patch(
+  '/issue-reports/:id/reply',
+  authorize(ROLES.ADMIN),
+  validate(idParamsSchema, 'params'),
+  validate(replyIssueReportSchema),
+  ctrl.replyIssueReportCtrl,
 );
 
 router.get('/', validate(listQuerySchema, 'query'), ctrl.listCtrl);
